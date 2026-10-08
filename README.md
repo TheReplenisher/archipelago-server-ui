@@ -6,7 +6,7 @@ custom apworlds (all checked before they're accepted), the admin generates and r
 the server from a console with command assistance, players follow their own slot's
 items and hints, and finished games are archived.
 
-> **Status: design phase.** Nothing is runnable yet. See [DESIGN.md](DESIGN.md) for the
+> **Status: early development.** The project skeleton exists; nothing is usable yet. See [DESIGN.md](DESIGN.md) for the
 > plan and [ROADMAP.md](ROADMAP.md) for what comes when.
 
 **Unofficial.** This project is not affiliated with or endorsed by the Archipelago project.

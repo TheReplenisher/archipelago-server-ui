@@ -24,3 +24,9 @@ __pycache__/
 # Node
 node_modules/
 dist/
+
+# Tooling caches and local dev data
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.dev-data/
