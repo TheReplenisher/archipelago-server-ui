@@ -1,0 +1,26 @@
+# Runtime data — never commit
+/data/
+*.db
+*.apsave
+*.archipelago
+AP_*.zip
+.env
+.env.*
+
+# ROMs and game files — never commit
+*.sfc
+*.smc
+*.z64
+*.n64
+*.gba
+*.nds
+*.iso
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+dist/
