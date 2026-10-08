@@ -1,6 +1,6 @@
 # Archipelago Server UI — Design
 
-> **Status:** design draft for **Alpha 1**. Nothing is built yet.
+> **Status:** design draft for **Alpha 1**. Only the project skeleton is built so far.
 > What is planned for later is in [ROADMAP.md](ROADMAP.md); the work itself is tracked
 > as GitHub issues, one milestone per release stage.
 
@@ -108,7 +108,7 @@ item, and if built it must show a warning on the health page.
 | Backend | Python, FastAPI |
 | Frontend | React + TypeScript + Vite, Mantine component library |
 | Live updates | WebSocket from web service to browser |
-| Storage | SQLite + a data directory (uploads, library, games, archives) |
+| Storage | SQLite (SQLAlchemy; Alembic migrations applied at startup) + a data directory (uploads, library, games, archives) |
 | Archipelago | Run from source at a pinned tag (needed for arm64), **without the desktop GUI dependencies** (kivy/kivymd) |
 | Packaging | One multi-arch image (amd64 primary, arm64 supported), GHCR |
 

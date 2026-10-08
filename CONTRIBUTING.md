@@ -11,6 +11,35 @@ and big changes are likely.
 - For anything bigger than a small fix, **comment on the issue (or open one) before
   writing code**, so effort isn't wasted on something that conflicts with the design.
 
+## Development setup
+
+You need [uv](https://docs.astral.sh/uv/) (it fetches Python 3.12 if needed) and
+Node.js 22 or newer.
+
+```
+backend/    FastAPI web service (package `apsui`): API, SQLite + Alembic migrations
+frontend/   React + TypeScript + Vite + Mantine; built into frontend/dist
+```
+
+```sh
+make install        # uv sync + npm ci
+make dev-backend    # API on http://localhost:8000 (data in .dev-data/)
+make dev-frontend   # UI on http://localhost:5173, hot reload, /api goes to the backend
+make check          # lint, format check, type check and tests for both
+make format         # auto-fix formatting
+```
+
+Without `make`, run the commands from the [Makefile](Makefile) yourself.
+The backend serves `frontend/dist` when it has been built (`make build`), which is
+how the app runs in production.
+
+Database changes need a migration:
+`cd backend && uv run alembic revision --autogenerate -m "describe the change"`.
+A test fails if the models and migrations disagree.
+
+**The web service (`backend/`) must never import Archipelago world code.** Anything
+that runs apworld code belongs in the worker or server service (DESIGN.md §2).
+
 ## Pull requests
 
 1. Fork the repo and branch from `main` (`feat/…`, `fix/…`, `docs/…`).
