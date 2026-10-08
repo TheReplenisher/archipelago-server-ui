@@ -1,0 +1,34 @@
+name: Bug report
+description: Something isn't working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "**Security problems go through private reporting, not here.** See SECURITY.md."
+  - type: textarea
+    id: what
+    attributes: {label: What happened?, description: What you expected vs what you saw.}
+    validations: {required: true}
+  - type: textarea
+    id: repro
+    attributes: {label: Steps to reproduce}
+    validations: {required: true}
+  - type: input
+    id: version
+    attributes: {label: App version / commit}
+    validations: {required: true}
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install type
+      options: [Docker Compose, Proxmox LXC, Other]
+    validations: {required: true}
+  - type: input
+    id: ap
+    attributes: {label: Archipelago version and games involved, placeholder: "0.6.8 — Hollow Knight (custom v1.2.0), OoT"}
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant logs. **Remove passwords, slot passwords and hostnames first.**
+      render: text

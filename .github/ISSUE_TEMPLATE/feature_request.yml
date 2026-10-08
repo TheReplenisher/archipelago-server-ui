@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest an idea
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: "Check [ROADMAP.md](../blob/main/ROADMAP.md) and existing issues first — it may already be planned."
+  - type: textarea
+    id: problem
+    attributes: {label: What problem would this solve?}
+    validations: {required: true}
+  - type: textarea
+    id: idea
+    attributes: {label: What would you like to happen?}
+    validations: {required: true}
+  - type: dropdown
+    id: who
+    attributes:
+      label: Who is it for?
+      options: [Server admins, Players, Both]
