@@ -57,6 +57,8 @@ Repo hygiene and security settings to finish before the repository is made publi
 - Player commands from the UI, with permissions set by the server's own settings
 - Next-game staging: players upload YAMLs while a game is running
 - Documented `wss://` setup for internet games
+- Server hardening: block the AP server's outbound traffic while still allowing players in
+  (internal network + TCP proxy on Docker; nftables owner match on LXC)
 
 ## Future
 

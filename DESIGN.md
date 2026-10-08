@@ -76,6 +76,27 @@ and resource limits. Under LXC, the same restrictions come from systemd
 The web service holds the database and secrets, and never imports Archipelago world code.
 It learns what it needs through the AP network protocol and from files the worker writes.
 
+### The server service also runs apworld code (#5)
+
+Archipelago's MultiServer imports **every** world in its worlds folder when it starts,
+including worlds not in the current game. This was confirmed in AP 0.6.8's source and
+in a live test.
+
+- **Alpha 1 (decided):** contain the server process.
+  - It has no database, no secrets and no access to the library.
+  - Only the **current game's locked apworlds** are mounted into its custom worlds folder.
+  - Read-only except the game directory, unprivileged, all capabilities dropped,
+    memory-limited.
+  - It is always started with an explicit `--host`. Without it, MultiServer makes an
+    outbound request to look up the host's public IP.
+- **Beta hardening (decided):** block the server's outbound traffic while still allowing
+  players in.
+  - Docker: the server sits on an `internal` network, and a small TCP proxy container
+    publishes the game ports.
+  - LXC: an nftables owner-match rule on the server unit's user.
+- **Rejected:** patching MultiServer to skip `import worlds`. It would mean carrying a
+  patch on AP core for every release.
+
 **Known trade-off:** users of single-container platforms (plain `docker run`, Unraid
 templates) need three containers. A reduced-isolation single-container mode is a Future
 item, and if built it must show a warning on the health page.
@@ -88,12 +109,12 @@ item, and if built it must show a warning on the health page.
 | Frontend | React + TypeScript + Vite, Mantine component library |
 | Live updates | WebSocket from web service to browser |
 | Storage | SQLite + a data directory (uploads, library, games, archives) |
-| Archipelago | Run from source at a pinned tag (needed for arm64) |
+| Archipelago | Run from source at a pinned tag (needed for arm64), **without the desktop GUI dependencies** (kivy/kivymd) |
 | Packaging | One multi-arch image (amd64 primary, arm64 supported), GHCR |
 
-**arm64 matters** because Oracle Cloud's free tier is Ampere ARM. Archipelago is run from
-source rather than its frozen Linux build, so some world dependencies may need wheels
-built for arm64. This is tracked as a verification task.
+**arm64 matters** because Oracle Cloud's free tier is Ampere ARM. It was verified in #8:
+every server and generator dependency has a native aarch64 wheel, and generation and
+hosting work. Each release is tested under emulated arm64 before it ships.
 
 ### Data layout
 
@@ -218,10 +239,20 @@ Users only ever see the short error.
   handlers, then given a hand-maintained map of argument types. This keeps it correct
   when AP is upgraded.
 
-### Server feed
+### Server feed (decided in #6: hybrid)
 
-- The server process's output is captured and streamed live to the browser.
-- **Alpha 1:** admin tab only. **Alpha 2:** players see it too.
+- **Admin console and admin feed:** the server process's stdout, streamed live.
+  - It is the only source that includes command output, for example `/players`.
+  - It is **admin-only**, because it contains the room password and the passwords of
+    refused login attempts.
+- **Player feed (Alpha 2) and slot views:** the AP protocol.
+  - The backend holds one observer connection (tag `Tracker`). Item sends are broadcast
+    to the whole team, structured, with item flags.
+  - The flags let the UI highlight progression, useful and trap items, and later drive
+    Discord's "important items".
+- **Accepted:** every Tracker connection is announced to all players ("X tracking … has
+  joined"), including in their game clients. Universal Tracker and PopTracker behave the
+  same way.
 
 ### Spoiler log
 
