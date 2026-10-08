@@ -30,6 +30,16 @@ make format         # auto-fix formatting
 ```
 
 Without `make`, run the commands from the [Makefile](Makefile) yourself.
+
+To build and smoke-test the image locally (Docker or Podman):
+
+```sh
+docker build -t apsui:dev .
+docker/smoke-test.sh apsui:dev 0.6.8        # CONTAINER=podman for Podman
+```
+
+The smoke test checks that the web service answers and that every built-in Archipelago
+world imports with no network and a read-only filesystem.
 The backend serves `frontend/dist` when it has been built (`make build`), which is
 how the app runs in production.
 
@@ -44,7 +54,8 @@ that runs apworld code belongs in the worker or server service (DESIGN.md §2).
 
 1. Fork the repo and branch from `main` (`feat/…`, `fix/…`, `docs/…`).
 2. Keep PRs focused on one issue, and reference it (`Closes #12`).
-3. Make sure lint and tests pass (CI runs them once the skeleton exists).
+3. Make sure lint and tests pass. CI runs them on every PR, then builds the image for
+   amd64 and arm64 and smoke-tests both.
 4. Workflows on PRs from first-time contributors need maintainer approval before they run.
 
 ## Security
@@ -61,3 +72,11 @@ YAMLs, or any secrets.
 ## Releases
 
 Semantic versioning with pre-release tags: `v0.1.0-alpha.1`, `v0.2.0-beta.1`, …
+
+CI publishes `ghcr.io/thereplenisher/archipelago-server-ui` (amd64 + arm64):
+
+| Trigger | Tags |
+|---|---|
+| push to `main` | `edge`, `sha-<short sha>` |
+| tag `v1.2.3` | `1.2.3`, `latest`, `sha-<short sha>` |
+| pre-release tag `v0.1.0-alpha.1` | `0.1.0-alpha.1`, `sha-<short sha>` (never `latest`) |
