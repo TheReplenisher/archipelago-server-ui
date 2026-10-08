@@ -170,7 +170,8 @@ Open ──► Locked ──► Generating ──► Generated ──► Schedul
 3. `game` exists, either as a built-in world or as an approved library apworld.
 4. Every option exists for that game and every value is legal. Weighted options and
    triggers are allowed.
-5. The total slot count stays under the admin's **max slots** setting.
+5. The total slot count stays under the admin's **max slots** setting. If `allow_quantity`
+   is on, each document's quantity counts toward it.
 
 Steps 3–4 import world code, so they run **in the worker**.
 
@@ -259,21 +260,33 @@ Users only ever see the short error.
 - The admin can view or download it.
 - It always shows an "Are you sure?" prompt first.
 
-### host.yaml settings
+### host.yaml settings (decided in #9)
 
-The most important `server_options` and `generator` options can be changed from the UI.
-The exact list is decided against AP 0.6.8's `host.yaml` (tracked as an issue).
-Candidates:
+⚡ = applied live with `/option`; everything else applies at the next start or generation.
 
-- passwords
-- release, collect and remaining modes
-- hint cost and location check points
-- countdown mode
-- auto shutdown
-- compatibility
-- spoiler level
-- race mode
-- plando options
+- **Server:**
+  - room `password` ⚡ and `server_password` ⚡
+  - `release_mode` ⚡, `collect_mode` ⚡, `remaining_mode` ⚡, `countdown_mode` ⚡
+  - `hint_cost` ⚡, `location_check_points` ⚡
+  - `disable_item_cheat` ⚡ (**our default: true**, so `!getitem` is off; AP's default has it on)
+  - `compatibility` ⚡
+  - `auto_shutdown` (shown as "stopped (idle)")
+  - `port`
+- **Generation:** `spoiler`, `race`, `plando_options` (checkboxes), `panic_method`
+- **Advanced section:**
+  - `loglevel`
+  - `log_network` (with a warning: very large logs)
+  - `allow_quantity` (each slot's quantity counts toward **max slots**)
+- **Hidden, set by the backend:**
+  - `host` (bind all; also stops the public-IP lookup)
+  - file paths: `multidata`, `savefile`, `output_path`, `player_files_path`, `weights_file_path`,
+    `meta_file_path`
+  - `players` (inferred from the uploads)
+  - `disable_save` (always false)
+  - `logtime` (always on, so the feed has timestamps)
+- **Belong to Future features:**
+  - per-game sections (ROM paths) go with ROM uploads
+  - `meta.yaml` goes with generation presets
 
 ### Patch files
 
