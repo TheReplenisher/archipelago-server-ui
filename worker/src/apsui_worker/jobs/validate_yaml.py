@@ -2,6 +2,8 @@
 
 Every document is checked on its own: the name (present, fixed, at most 16 characters),
 the game (a world Archipelago can load), and every option value that could be rolled.
+A name problem is reported separately (name_error) and the other checks still run, so the
+admin can rename the slot instead of asking for a re-upload.
 Archipelago's own roll_settings() then runs a few times, which also exercises triggers,
 linked options and `requires`. No generation happens: a YAML that only works inside a
 full multiworld must not be rejected here.
@@ -102,8 +104,17 @@ def check_document(
     if quantity > 1 and not allow_quantity:
         raise DocumentError("quantity-disabled", "Quantity above 1 is turned off")
 
-    name = check_name(doc.get("name"))
-    result |= {"name": name, "quantity": quantity}
+    # A name problem doesn't stop the other checks: the admin can fix the name on the spot
+    # (the web service edits it), so the rest of the document must already be known good.
+    raw = doc.get("name")
+    result["name_raw"] = name_raw(raw)
+    try:
+        name = check_name(raw)
+        result |= {"name": name, "name_error": None}
+    except DocumentError as exc:
+        name = PLACEHOLDER_NAME
+        result |= {"name": None, "name_error": exc.as_dict()}
+    result["quantity"] = quantity
 
     games = candidates(doc.get("game"))
     if not games or not all(isinstance(g, str) for g in games):
@@ -136,6 +147,20 @@ def check_document(
                 "roll-failed", "Options could not be rolled", Utils.get_all_causes(exc)
             ) from exc
     return result
+
+
+PLACEHOLDER_NAME = "Player"
+"""Stands in for a broken name while the options are checked (verify() takes a name)."""
+
+
+def name_raw(value: object) -> str | list[str] | None:
+    """What the file has as its name, for the admin to see and pick from: the string, the
+    names a weighted entry could roll, or None."""
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        return [str(v)[:100] for v in candidates(value)][:20]
+    return str(value)[:100]
 
 
 def check_name(name: object) -> str:

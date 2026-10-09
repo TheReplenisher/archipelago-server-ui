@@ -22,6 +22,13 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
 export const postJson = <T>(path: string, body?: BodyInit) =>
   getJson<T>(path, { method: 'POST', body })
 
+export const postJsonBody = <T>(path: string, body: unknown) =>
+  getJson<T>(path, {
+    method: 'POST',
+    body: JSON.stringify(body),
+    headers: { 'Content-Type': 'application/json' },
+  })
+
 /** The API's short error message (`detail.message`), else the HTTP status. */
 async function errorMessage(response: Response): Promise<string> {
   try {
@@ -55,7 +62,16 @@ export interface Game {
 export const getGame = (signal?: AbortSignal) => getJson<Game>('/game', { signal })
 export const runGameAction = (action: GameAction) => postJson<Game>(`/game/${action}`)
 
-export type UploadStatus = 'pending' | 'accepted' | 'rejected' | 'removed'
+export type UploadStatus = 'pending' | 'needs-name' | 'accepted' | 'rejected' | 'removed'
+
+export interface NameProblem {
+  document: number
+  /** The name in the file, or the names a weighted entry could roll. */
+  current: string | string[] | null
+  code: string
+  message: string
+  suggestion: string
+}
 
 export interface Upload {
   id: number
@@ -67,6 +83,7 @@ export interface Upload {
   uploaded_at: string
   checked_at: string | null
   slots: string[]
+  name_problems: NameProblem[]
 }
 
 export const listUploads = (signal?: AbortSignal) => getJson<Upload[]>('/uploads', { signal })
@@ -78,3 +95,8 @@ export function uploadYaml(file: File) {
 }
 
 export const removeUpload = (id: number) => getJson<Upload>(`/uploads/${id}`, { method: 'DELETE' })
+
+export const renameUpload = (id: number, names: { document: number; name: string }[]) =>
+  postJsonBody<Upload>(`/uploads/${id}/rename`, { names })
+
+export const cancelUpload = (id: number) => postJson<Upload>(`/uploads/${id}/cancel`)

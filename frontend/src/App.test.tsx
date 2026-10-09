@@ -122,6 +122,7 @@ describe('uploads', () => {
     error_code: null,
     error_message: null,
     slots: [],
+    name_problems: [],
   }
 
   it('uploads a YAML, shows it as checking, then the result', async () => {
@@ -185,5 +186,89 @@ describe('uploads', () => {
     renderRoute('/admin')
     expect(await screen.findByText('Slot name is longer than 16 characters')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument()
+  })
+})
+
+describe('fixing slot names', () => {
+  const waiting = {
+    id: 3,
+    kind: 'yaml',
+    filename: 'weighted.yaml',
+    status: 'needs-name',
+    uploaded_at: '2026-10-09T00:00:00Z',
+    checked_at: '2026-10-09T00:00:01Z',
+    error_code: null,
+    error_message: null,
+    slots: [],
+    name_problems: [
+      {
+        document: 0,
+        current: ['Alice', 'Bob'],
+        code: 'name-not-fixed',
+        message: 'Slot name must be one fixed name',
+        suggestion: 'Alice',
+      },
+    ],
+  }
+
+  function stub(onPost: (url: string, init?: RequestInit) => Response) {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'POST') return Promise.resolve(onPost(url, init))
+      if (url === '/api/uploads') return Promise.resolve(Response.json([waiting]))
+      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('renames with the suggestion pre-filled', async () => {
+    const fetchMock = stub(() =>
+      Response.json({ ...waiting, status: 'pending', name_problems: [] }),
+    )
+    renderRoute('/admin')
+    expect(await screen.findByText('needs a name')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Fix name' }))
+
+    const input = await screen.findByLabelText(/Slot 1: one of Alice, Bob/)
+    expect(input).toHaveValue('Alice')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Carol')
+    await userEvent.click(screen.getByRole('button', { name: 'Save names' }))
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/uploads/3/rename', expect.anything()),
+    )
+    const [, init] = fetchMock.mock.calls.find(([u]) => String(u) === '/api/uploads/3/rename')!
+    expect(JSON.parse(String(init?.body))).toEqual({ names: [{ document: 0, name: 'Carol' }] })
+  })
+
+  it('shows why a new name was refused and stays open', async () => {
+    stub(() =>
+      Response.json(
+        { detail: { code: 'name-taken', message: 'Slot name Alice is already taken' } },
+        { status: 400 },
+      ),
+    )
+    renderRoute('/admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Fix name' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Save names' }))
+    expect(await screen.findByText('Slot name Alice is already taken')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save names' })).toBeInTheDocument()
+  })
+
+  it('cancels only after confirming', async () => {
+    const fetchMock = stub(() =>
+      Response.json({ ...waiting, status: 'rejected', error_code: 'cancelled', name_problems: [] }),
+    )
+    renderRoute('/admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Fix name' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel upload' }))
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/uploads/3/cancel', expect.anything())
+    await userEvent.click(screen.getByRole('button', { name: 'Yes, cancel upload' }))
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/uploads/3/cancel', expect.anything()),
+    )
   })
 })

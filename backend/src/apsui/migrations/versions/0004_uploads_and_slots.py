@@ -29,6 +29,7 @@ def upgrade() -> None:
         sa.Column("error_code", sa.String(length=64), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column("detail", sa.JSON(), nullable=True),
+        sa.Column("name_problems", sa.JSON(), nullable=True),
         sa.Column("job_id", sa.String(length=32), nullable=True),
         sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("checked_at", sa.DateTime(timezone=True), nullable=True),

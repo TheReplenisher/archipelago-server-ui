@@ -29,6 +29,8 @@ def doc(name: str | None, index: int = 0, error: dict[str, str] | None = None) -
         "index": index,
         "empty": False,
         "name": name,
+        "name_raw": name,
+        "name_error": None,
         "quantity": 1,
         "games": ["APQuest"],
         "error": error,
@@ -96,22 +98,114 @@ def test_worker_error_is_the_short_message(client: TestClient) -> None:
     assert client.get("/api/slots").json() == []
 
 
-def test_names_are_unique_across_the_game_ignoring_case(client: TestClient) -> None:
+def test_a_taken_name_asks_for_a_new_one(client: TestClient) -> None:
     upload(client)
     worker_finishes(client, {"error": None, "documents": [doc("Quester")]})
     upload(client, name="again.yaml")
-    worker_finishes(client, {"error": None, "documents": [doc("QUESTER")]})
-    rejected = uploads(client)[0]
-    assert (rejected["error_code"], rejected["error_message"]) == (
-        "name-taken",
-        "Slot name QUESTER is already taken",
-    )
+    worker_finishes(client, {"error": None, "documents": [doc("QUESTER")]})  # ignoring case
+    waiting = uploads(client)[0]
+    assert waiting["status"] == "needs-name"
+    [problem] = waiting["name_problems"]
+    assert problem["code"] == "name-taken"
+    assert problem["message"] == "Slot name QUESTER is already taken"
+    assert problem["suggestion"] == "QUESTER2"  # a free variant, not the taken name
 
 
 def test_duplicate_names_inside_one_file(client: TestClient) -> None:
     upload(client)
     worker_finishes(client, {"error": None, "documents": [doc("A"), doc("a", index=1)]})
-    assert uploads(client)[0]["error_code"] == "name-duplicate"
+    waiting = uploads(client)[0]
+    assert waiting["status"] == "needs-name"
+    assert [(p["document"], p["code"]) for p in waiting["name_problems"]] == [(1, "name-duplicate")]
+
+
+WEIGHTED = b"""# a comment that must survive
+name:
+  Alice: 1
+  Bob: 1
+game: APQuest
+APQuest:
+  hard_mode: true
+"""
+
+
+def weighted_name_output() -> dict[str, Any]:
+    error = {"code": "name-not-fixed", "message": "Slot name must be one fixed name", "detail": ""}
+    return {
+        "error": None,
+        "documents": [doc(None) | {"name_raw": ["Alice", "Bob"], "name_error": error}],
+    }
+
+
+def test_weighted_name_is_renamed_in_place(client: TestClient, settings: Settings) -> None:
+    upload_id = upload(client, WEIGHTED)["id"]
+    worker_finishes(client, weighted_name_output())
+    [problem] = uploads(client)[0]["name_problems"]
+    assert (problem["current"], problem["suggestion"]) == (["Alice", "Bob"], "Alice")
+
+    renamed = client.post(
+        f"/api/uploads/{upload_id}/rename", json={"names": [{"document": 0, "name": " Alice "}]}
+    )
+    assert renamed.status_code == 202, renamed.text
+    assert renamed.json()["status"] == "pending"  # checked again from scratch
+
+    edited = (settings.uploads_dir / f"{upload_id}.yaml").read_bytes()
+    assert b'name: "Alice"\n' in edited
+    assert b"# a comment that must survive" in edited and b"hard_mode: true" in edited
+    jobs: JobQueue = client.app.state.jobs  # type: ignore[attr-defined]
+    [job_id] = jobs.dirs.ids(State.QUEUE)
+    assert (jobs.dirs.path(State.QUEUE, job_id) / "input" / "upload.yaml").read_bytes() == edited
+
+    worker_finishes(client, {"error": None, "documents": [doc("Alice")]})
+    accepted = uploads(client)[0]
+    assert (accepted["status"], accepted["slots"]) == ("accepted", ["Alice"])
+    assert (settings.game_dir / "yamls" / f"{upload_id}.yaml").read_bytes() == edited
+
+
+@pytest.mark.parametrize(
+    ("name", "code"),
+    [("ThisIsWayTooLongName", "name-invalid"), ("", "name-invalid"), ("Taken", "name-taken")],
+)
+def test_bad_new_names_are_refused_and_it_keeps_waiting(
+    client: TestClient, name: str, code: str
+) -> None:
+    upload(client)
+    worker_finishes(client, {"error": None, "documents": [doc("Taken")]})
+    upload_id = upload(client, WEIGHTED)["id"]
+    worker_finishes(client, weighted_name_output())
+    response = client.post(
+        f"/api/uploads/{upload_id}/rename", json={"names": [{"document": 0, "name": name}]}
+    )
+    assert (response.status_code, response.json()["detail"]["code"]) == (400, code)
+    assert uploads(client)[0]["status"] == "needs-name"
+
+
+def test_every_listed_slot_needs_a_name(client: TestClient) -> None:
+    upload_id = upload(client, WEIGHTED)["id"]
+    worker_finishes(client, weighted_name_output())
+    response = client.post(f"/api/uploads/{upload_id}/rename", json={"names": []})
+    assert response.json()["detail"]["code"] == "names-missing"
+
+
+def test_cancel_requires_a_re_upload(client: TestClient, settings: Settings) -> None:
+    upload_id = upload(client, WEIGHTED)["id"]
+    worker_finishes(client, weighted_name_output())
+    assert client.post("/api/game/lock").status_code == 409  # waiting for a name blocks lock
+
+    cancelled = client.post(f"/api/uploads/{upload_id}/cancel").json()
+    assert (cancelled["status"], cancelled["error_code"]) == ("rejected", "cancelled")
+    assert not (settings.uploads_dir / f"{upload_id}.yaml").exists()
+    rename = client.post(
+        f"/api/uploads/{upload_id}/rename", json={"names": [{"document": 0, "name": "Alice"}]}
+    )
+    assert rename.status_code == 409
+    assert client.post("/api/game/lock").status_code == 200
+
+
+def test_slot_limit_still_rejects_outright(client: TestClient) -> None:
+    upload(client)
+    worker_finishes(client, {"error": None, "documents": [doc(n, i) for i, n in enumerate("ABCD")]})
+    assert uploads(client)[0]["error_code"] == "too-many-slots"
 
 
 def test_slot_limit(client: TestClient) -> None:  # max_slots = 3

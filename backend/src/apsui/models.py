@@ -58,12 +58,14 @@ class Upload(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     size: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(16))
-    """pending, accepted, rejected or removed."""
+    """pending, needs-name, accepted, rejected or removed."""
     error_code: Mapped[str | None] = mapped_column(String(64))
     error_message: Mapped[str | None] = mapped_column(Text)
     """Short and safe to show the uploader; the full detail is in `detail`."""
     detail: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     """The worker's per-document results, or the job's error."""
+    name_problems: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    """While needs-name: one entry per document whose slot name must change."""
     job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

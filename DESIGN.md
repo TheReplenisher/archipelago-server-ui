@@ -244,8 +244,15 @@ Steps 3–4 import world code, so they run **in the worker** (the `validate-yaml
   weighted option with a non-zero weight, each list item, then the option's own
   `verify()`. Archipelago's `roll_settings()` then runs 5 times, which also exercises
   triggers, linked options and `requires`.
-- **The name must be one fixed string.** Weighted names and templates (`%number%`,
-  `%player%`) are rejected, because a slot is logged in to by name (§6).
+- **The name must be one fixed string,** because a slot is logged in to by name (§6).
+  Weighted names and templates (`%number%`, `%player%`) don't qualify.
+- **A slot-name problem doesn't reject the file.** Weighted, template, too long,
+  missing, reserved, already taken in this game, or used twice in the file: the upload
+  waits as *needs a name*, with the reason and a suggested name for each slot. The admin
+  either **types new names**, and the service edits only the `name:` entries of the YAML
+  (comments and everything else stay as written) and checks the file again from scratch,
+  or **cancels**, which rejects it so a fixed file has to be uploaded. Problems a new
+  name can't fix (bad options, unknown game, slot limit) still reject outright.
 - **Unknown option names are warnings, not errors,** as in Archipelago itself.
 - **`quantity` above 1 is rejected** until `allow_quantity` exists on the settings page
   (#25); with fixed names it could never be unique anyway.
@@ -253,7 +260,8 @@ Steps 3–4 import world code, so they run **in the worker** (the `validate-yaml
   they depend on the other uploads. Names are compared without case, as Archipelago does.
 - **The accepted file is always the admin's own bytes,** kept in web-only storage while it
   is checked, never a copy back from the worker.
-- **Lock waits for checks:** the game can't be locked while a file is still being checked.
+- **Lock waits for checks:** the game can't be locked while a file is still being checked
+  or waiting for a name.
 
 **No solo test generation.** Some YAMLs fail on their own but work in a full multiworld,
 so a solo test would reject good uploads.

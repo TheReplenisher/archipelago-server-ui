@@ -129,7 +129,8 @@ for job_id in dirs.ids(State.DONE):
         continue
     out = result.output
     errors = [out["error"]] if out["error"] else []
-    errors += [d["error"] for d in out["documents"] if d.get("error")]
+    for d in out["documents"]:  # a document's own error first, then a name problem
+        errors += [e for e in (d.get("error"), d.get("name_error")) if e]
     got = errors[0]["code"] if errors else "ok"
     print(f"  {sample}: {got}" + (f" ({errors[0]['message']})" if errors else ""))
     if got != expected:

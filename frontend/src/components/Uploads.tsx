@@ -1,6 +1,7 @@
 import { Alert, Badge, Button, Card, FileButton, Group, Stack, Table, Text } from '@mantine/core'
 import { IconUpload } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import { FixNamesModal } from './FixNamesModal'
 import {
   listUploads,
   removeUpload,
@@ -11,9 +12,15 @@ import {
 
 const statusColor: Record<UploadStatus, string> = {
   pending: 'blue',
+  'needs-name': 'orange',
   accepted: 'green',
   rejected: 'red',
   removed: 'gray',
+}
+
+const statusLabel: Partial<Record<UploadStatus, string>> = {
+  pending: 'checking',
+  'needs-name': 'needs a name',
 }
 
 const POLL_MS = 1000
@@ -24,6 +31,7 @@ export function Uploads() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [version, setVersion] = useState(0) // bump to reload the list
+  const [fixing, setFixing] = useState<Upload | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -106,7 +114,7 @@ export function Uploads() {
                     <Table.Td>{u.filename}</Table.Td>
                     <Table.Td>
                       <Badge color={statusColor[u.status]} variant="light">
-                        {u.status === 'pending' ? 'checking' : u.status}
+                        {statusLabel[u.status] ?? u.status}
                       </Badge>
                     </Table.Td>
                     <Table.Td>
@@ -114,11 +122,20 @@ export function Uploads() {
                         <Text size="sm" c="red">
                           {u.error_message}
                         </Text>
+                      ) : u.status === 'needs-name' ? (
+                        <Text size="sm" c="orange">
+                          {u.name_problems.map((p) => p.message).join('; ')}
+                        </Text>
                       ) : (
                         <Text size="sm">{u.slots.join(', ')}</Text>
                       )}
                     </Table.Td>
                     <Table.Td>
+                      {u.status === 'needs-name' && (
+                        <Button size="compact-xs" variant="light" onClick={() => setFixing(u)}>
+                          Fix name
+                        </Button>
+                      )}
                       {u.status === 'accepted' && (
                         <Button
                           size="compact-xs"
@@ -137,6 +154,16 @@ export function Uploads() {
           </Table.ScrollContainer>
         )}
       </Stack>
+      {fixing && (
+        <FixNamesModal
+          upload={fixing}
+          onClose={() => setFixing(null)}
+          onDone={() => {
+            setFixing(null)
+            setVersion((v) => v + 1)
+          }}
+        />
+      )}
     </Card>
   )
 }

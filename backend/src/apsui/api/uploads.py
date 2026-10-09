@@ -11,11 +11,29 @@ from apsui.db import get_session
 from apsui.jobs import JobQueue
 from apsui.lifecycle import current_game
 from apsui.models import Slot, Upload
-from apsui.uploads import MAX_YAML_BYTES, UploadError, remove_upload, submit_yaml, summary
+from apsui.uploads import (
+    MAX_YAML_BYTES,
+    UploadError,
+    cancel,
+    remove_upload,
+    rename,
+    submit_yaml,
+    summary,
+)
 
 router = APIRouter(tags=["uploads"])
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+class NameProblem(BaseModel):
+    document: int
+    """The document's position in the file (0 is the first)."""
+    current: str | list[str] | None
+    """What the file has: the name, or the names a weighted entry could roll."""
+    code: str
+    message: str
+    suggestion: str
 
 
 class UploadOut(BaseModel):
@@ -28,6 +46,17 @@ class UploadOut(BaseModel):
     uploaded_at: datetime
     checked_at: datetime | None
     slots: list[str]
+    name_problems: list[NameProblem]
+    """While status is needs-name: the slots that need a new name."""
+
+
+class NewName(BaseModel):
+    document: int
+    name: str
+
+
+class RenameIn(BaseModel):
+    names: list[NewName]
 
 
 class SlotOut(BaseModel):
@@ -70,6 +99,32 @@ def delete_upload(request: Request, upload_id: int, session: SessionDep) -> Uplo
     part of the upload log."""
     try:
         upload = remove_upload(session, request.app.state.settings, upload_id)
+    except UploadError as exc:
+        raise _error(exc) from exc
+    return UploadOut.model_validate(summary(upload))
+
+
+@router.post("/uploads/{upload_id}/rename", status_code=202)
+def rename_upload(
+    request: Request, upload_id: int, body: RenameIn, session: SessionDep
+) -> UploadOut:
+    """Give new slot names to an upload waiting for them. The YAML is edited (only its
+    `name:` entries) and checked again; poll GET /api/uploads for the result."""
+    names = {n.document: n.name for n in body.names}
+    try:
+        upload = rename(
+            session, request.app.state.jobs, request.app.state.settings, upload_id, names
+        )
+    except UploadError as exc:
+        raise _error(exc) from exc
+    return UploadOut.model_validate(summary(upload))
+
+
+@router.post("/uploads/{upload_id}/cancel")
+def cancel_upload(request: Request, upload_id: int, session: SessionDep) -> UploadOut:
+    """Turn down an upload waiting for a name. It is rejected; upload a fixed file."""
+    try:
+        upload = cancel(session, request.app.state.settings, upload_id)
     except UploadError as exc:
         raise _error(exc) from exc
     return UploadOut.model_validate(summary(upload))
