@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     data_dir: Path = Path("/data")
     """Holds app.db, the apworld library, games and archives (DESIGN.md §2, data layout)."""
 
+    jobs_dir: Path | None = None
+    """Shared with the worker. Defaults to <data_dir>/jobs."""
+
+    job_poll_interval: float = 1.0
+    """Seconds between checks for finished worker jobs."""
+
     static_dir: Path | None = None
     """Built frontend. Defaults to frontend/dist when running from a source checkout."""
 
@@ -26,6 +32,10 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         return f"sqlite:///{self.data_dir / 'app.db'}"
+
+    @property
+    def resolved_jobs_dir(self) -> Path:
+        return self.jobs_dir or self.data_dir / "jobs"
 
     @property
     def resolved_static_dir(self) -> Path | None:

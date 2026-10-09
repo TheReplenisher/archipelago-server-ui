@@ -1,0 +1,3 @@
+#!/bin/sh
+# The worker service. Always runs with Archipelago's environment, never the web service's.
+exec /opt/archipelago-venv/bin/python -m apsui_worker.main "$@"

@@ -31,12 +31,23 @@ jobs:
         with:
           version: "0.12.23"
           enable-cache: true
-          cache-dependency-glob: backend/uv.lock
+          cache-dependency-glob: |
+            backend/uv.lock
+            worker/uv.lock
       - run: uv sync --locked
       - run: uv run ruff check --output-format=github .
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
+      # The worker package (worker/) is checked here too, so the required checks stay the same.
+      - name: Worker
+        working-directory: worker
+        run: |
+          uv sync --locked
+          uv run ruff check --output-format=github .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest
 
   frontend:
     name: Frontend

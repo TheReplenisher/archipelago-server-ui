@@ -5,6 +5,7 @@ DEV_DATA := $(CURDIR)/.dev-data
 
 install:
 	cd backend && uv sync
+	cd worker && uv sync
 	cd frontend && npm ci
 
 # API on :8000. Serves frontend/dist too, if it has been built.
@@ -20,14 +21,17 @@ build:
 
 lint:
 	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy
+	cd worker && uv run ruff check . && uv run ruff format --check . && uv run mypy
 	cd frontend && npm run lint && npm run format:check && npm run typecheck
 
 format:
 	cd backend && uv run ruff check --fix . && uv run ruff format .
+	cd worker && uv run ruff check --fix . && uv run ruff format .
 	cd frontend && npm run format
 
 test:
 	cd backend && uv run pytest
+	cd worker && uv run pytest
 	cd frontend && npm test
 
 check: lint test
