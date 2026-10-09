@@ -1,0 +1,53 @@
+# Dependency update PRs. Each one runs the full CI, which must pass before it can merge.
+# Minor and patch updates are grouped into one PR per ecosystem; majors come one at a time.
+# The cooldown skips releases younger than a week, so a compromised or broken release
+# has time to be noticed and pulled before it is proposed here.
+#
+# Archipelago itself (AP_VERSION in the Dockerfile and CI) is pinned on purpose and is
+# not updated here: AP upgrades are deliberate (DESIGN.md §1).
+version: 2
+
+updates:
+  - package-ecosystem: uv
+    directory: /backend
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      backend:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      frontend:
+        update-types: [minor, patch]
+
+  # node and the uv binary in the Dockerfile. The python images are written with
+  # ${PYTHON_VERSION}, which Dependabot can't resolve, so they stay on 3.12 (AP's runtime)
+  # and pick up 3.12.x patch releases whenever the image is rebuilt.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        update-types: [minor, patch]
+
+  # Keeps the SHA-pinned actions in .github/workflows current
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        update-types: [minor, patch]
