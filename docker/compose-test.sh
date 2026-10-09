@@ -1,0 +1,110 @@
+#!/bin/sh
+# Bring up compose.yaml with a given image and check that it works and that each
+# service's isolation holds (DESIGN.md §2, #13).
+# Usage: compose-test.sh <image>       (COMPOSE="podman compose" etc. to override)
+set -eu
+
+export APSUI_IMAGE="$1"
+export APSUI_WEB_PORT="${APSUI_WEB_PORT:-18080}"
+export APSUI_GAME_PORT="${APSUI_GAME_PORT:-48281}"
+project="apsui-test-$$"
+here=$(cd "$(dirname "$0")/.." && pwd)
+compose() { ${COMPOSE:-docker compose} -p "$project" -f "$here/compose.yaml" "$@"; }
+py() { service=$1; shift; compose exec -T "$service" /opt/archipelago-venv/bin/python - "$@"; }
+
+cleanup() {
+    status=$?
+    if [ "$status" -ne 0 ]; then compose logs --no-color --tail 50 || true; fi
+    compose down -v --timeout 5 >/dev/null 2>&1 || true
+    exit "$status"
+}
+trap cleanup EXIT
+
+echo "--- start the stack and wait for every healthcheck"
+compose up -d --wait --wait-timeout 120
+
+echo "--- web answers on the published port"
+curl -fsS "http://127.0.0.1:$APSUI_WEB_PORT/api/health" | grep -q '"status":"ok"'
+
+echo "--- web reaches the server supervisor over the control socket"
+curl -fsS "http://127.0.0.1:$APSUI_WEB_PORT/api/server" | grep -q '"reachable":true'
+
+echo "--- a job goes web -> worker -> web"
+compose exec -T web python - <<'PY'
+import time
+from apsui.config import get_settings
+from apsui.db import make_engine, make_sessionmaker
+from apsui.jobs import JobQueue
+from apsui.models import Job
+
+settings = get_settings()
+sessions = make_sessionmaker(make_engine(settings.database_url))
+with sessions() as session:
+    job_id = JobQueue(settings.resolved_jobs_dir).submit(session, "ping").id
+for _ in range(60):  # the web service's own collector records the result
+    with sessions() as session:
+        job = session.get(Job, job_id)
+        if job is not None and job.status not in ("queued", "running"):
+            break
+    time.sleep(0.5)
+assert job is not None and job.status == "ok", (job.status if job else None, job and job.result)
+print("ping job: ok")
+PY
+
+# Checks run inside every service.
+common_checks='
+import os, sys
+status = dict(line.split(":\t", 1) for line in open("/proc/self/status").read().splitlines() if ":\t" in line)
+assert os.getuid() == 10001, f"uid {os.getuid()}"
+caps = status["CapEff"]
+assert int(caps, 16) == 0, "capabilities " + caps
+assert status["NoNewPrivs"].strip() == "1", "no-new-privileges is off"
+try:
+    open("/opt/write-test", "w")
+    sys.exit("root filesystem is writable")
+except OSError:
+    pass
+'
+
+for service in web worker server; do
+    echo "--- $service: unprivileged, read-only root, no capabilities"
+    printf '%s\n' "$common_checks" | py "$service"
+done
+
+echo "--- worker: no network, and only the job queue is visible"
+py worker <<'PY'
+import os, socket
+assert sorted(os.listdir("/sys/class/net")) == ["lo"], os.listdir("/sys/class/net")
+try:
+    socket.create_connection(("1.1.1.1", 443), timeout=3)
+    raise SystemExit("worker reached the internet")
+except OSError:
+    pass
+mounts = {line.split()[4] for line in open("/proc/self/mountinfo")}
+for path in ("/data", "/data/game", "/run/apsui"):  # empty image folders are fine
+    assert path not in mounts, f"worker has {path} mounted"
+assert "/data/jobs" in mounts
+open("/data/jobs/.write-test", "w").close()
+os.remove("/data/jobs/.write-test")
+print("ok")
+PY
+
+echo "--- server: no route to the web service, and no database or job queue"
+web_ip=$(compose exec -T web python -c 'import socket; print(socket.gethostbyname(socket.gethostname()))' | tr -d '\r')
+py server "$web_ip" <<'PY'
+import os, socket, sys
+assert sys.argv[1].count(".") == 3, f"no address for the web container: {sys.argv[1]!r}"
+for host in ("web", sys.argv[1]):  # by name, and by the web container's address
+    try:
+        socket.create_connection((host, 8000), timeout=3)
+        raise SystemExit(f"server reached the web service as {host!r}")
+    except OSError:
+        pass
+mounts = {line.split()[4] for line in open("/proc/self/mountinfo")}
+for path in ("/data", "/data/jobs"):  # empty image folders are fine
+    assert path not in mounts, f"server has {path} mounted"
+assert {"/data/game", "/run/apsui"} <= mounts
+print("ok")
+PY
+
+echo "compose test passed"

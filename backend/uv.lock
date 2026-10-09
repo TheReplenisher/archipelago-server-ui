@@ -57,6 +57,7 @@ version = "0.1.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "apsui-server" },
     { name = "apsui-worker" },
     { name = "fastapi" },
     { name = "pydantic-settings" },
@@ -75,6 +76,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.16" },
+    { name = "apsui-server", editable = "../server" },
     { name = "apsui-worker", editable = "../worker" },
     { name = "fastapi", specifier = ">=0.120" },
     { name = "pydantic-settings", specifier = ">=2.10" },
@@ -85,6 +87,20 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "httpx2", specifier = ">=2.13" },
+    { name = "mypy", specifier = ">=1.17" },
+    { name = "pytest", specifier = ">=8.4" },
+    { name = "ruff", specifier = ">=0.13" },
+]
+
+[[package]]
+name = "apsui-server"
+version = "0.1.0.dev0"
+source = { editable = "../server" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
     { name = "mypy", specifier = ">=1.17" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "ruff", specifier = ">=0.13" },

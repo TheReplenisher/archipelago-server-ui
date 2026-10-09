@@ -34,14 +34,24 @@ jobs:
           cache-dependency-glob: |
             backend/uv.lock
             worker/uv.lock
+            server/uv.lock
       - run: uv sync --locked
       - run: uv run ruff check --output-format=github .
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
-      # The worker package (worker/) is checked here too, so the required checks stay the same.
+      # The worker and server packages are checked here too, so the required checks stay
+      # the same.
       - name: Worker
         working-directory: worker
+        run: |
+          uv sync --locked
+          uv run ruff check --output-format=github .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest
+      - name: Server
+        working-directory: server
         run: |
           uv sync --locked
           uv run ruff check --output-format=github .
@@ -110,6 +120,8 @@ jobs:
       # The Dockerfile's ARG AP_VERSION is the one place Archipelago's version is pinned.
       - name: Smoke test
         run: docker/smoke-test.sh apsui:test "$(sed -n 's/^ARG AP_VERSION=//p' Dockerfile)"
+      - name: Compose stack and isolation test
+        run: docker/compose-test.sh apsui:test
       - if: github.event_name == 'push'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:

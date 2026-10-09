@@ -19,6 +19,7 @@ import re
 import secrets
 import stat
 import tempfile
+import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -32,6 +33,11 @@ RESULT_FILE = "result.json"
 LOG_FILE = "log.txt"
 INPUT_DIR = "input"
 OUTPUT_DIR = "output"
+
+HEARTBEAT_FILE = "worker.heartbeat"
+"""In the jobs root. The worker touches it every few seconds, also while a job runs."""
+HEARTBEAT_INTERVAL = 5.0
+HEARTBEAT_MAX_AGE = 30.0
 
 MAX_RESULT_BYTES = 1_000_000
 """The web service refuses larger result files."""
@@ -89,6 +95,17 @@ class JobDirs:
     def ensure(self) -> None:
         for state in State:
             (self.root / state).mkdir(parents=True, exist_ok=True)
+
+    def beat(self) -> None:
+        (self.root / HEARTBEAT_FILE).touch()
+
+    def heartbeat_age(self) -> float | None:
+        """Seconds since the worker last showed signs of life, or None if it never has."""
+        try:
+            mtime = (self.root / HEARTBEAT_FILE).stat().st_mtime
+        except FileNotFoundError:
+            return None
+        return max(0.0, time.time() - mtime)
 
     def ids(self, state: State) -> list[str]:
         """Job ids in a state folder, oldest first. Anything else in the folder is ignored."""

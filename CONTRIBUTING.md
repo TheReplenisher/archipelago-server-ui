@@ -20,6 +20,9 @@ Node.js 22 or newer.
 backend/    FastAPI web service (package `apsui`): API, SQLite + Alembic migrations
 worker/     worker service (package `apsui_worker`): runs jobs that execute Archipelago code;
             standard library only, installed into Archipelago's own environment
+server/     server service (package `apsui_server`): the supervisor for MultiServer and its
+            control socket; standard library only, never imports Archipelago
+compose.yaml  the Docker Compose stack
 frontend/   React + TypeScript + Vite + Mantine; built into frontend/dist
 ```
 
@@ -42,6 +45,9 @@ docker/smoke-test.sh apsui:dev 0.6.8        # CONTAINER=podman for Podman
 
 The smoke test checks that the web service answers and that every built-in Archipelago
 world imports with no network and a read-only filesystem.
+
+To run the whole stack and check its isolation (each service's mounts, network, user and
+capabilities): `docker/compose-test.sh apsui:dev`.
 The backend serves `frontend/dist` when it has been built (`make build`), which is
 how the app runs in production.
 
@@ -51,8 +57,9 @@ A test fails if the models and migrations disagree.
 
 **The web service (`backend/`) must never import Archipelago world code.** Anything
 that runs apworld code belongs in the worker or server service (DESIGN.md §2). The web
-service depends on `apsui_worker` only for `apsui_worker.protocol`, the job file format;
-a test fails if importing the web app loads any Archipelago module.
+service depends on `apsui_worker` and `apsui_server` only for their protocols (the job file
+format and the control socket); a test fails if importing the web app loads any
+Archipelago module.
 
 New worker job types go in `worker/src/apsui_worker/jobs/`: a handler takes the job's
 params and a context, returns a JSON-friendly dict, raises `JobFailure` for an expected
