@@ -118,13 +118,15 @@ class JobQueue:
             job.error_code = result.error.code if result.error else None
             job.error_message = result.error.message if result.error else None
             job.result = result.to_json()
+            session.commit()  # the job's record is safe before any handler runs
             handler = self.on_finished.get(job.type)
             if handler is not None:
                 try:
                     handler(session, job, job_dir)
+                    session.commit()
                 except Exception:
+                    session.rollback()
                     log.exception("handling finished job %s (%s) failed", job_id, job.type)
-            session.commit()
             shutil.rmtree(job_dir, ignore_errors=True)
             finished.append(job)
         return finished

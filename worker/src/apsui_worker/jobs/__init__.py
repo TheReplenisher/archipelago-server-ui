@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from apsui_worker.jobs import list_worlds, ping
+from apsui_worker.jobs import list_worlds, ping, validate_yaml
 
 
 @dataclass(frozen=True)
@@ -37,4 +37,5 @@ Handler = Callable[[dict[str, Any], JobContext], dict[str, Any]]
 HANDLERS: dict[str, Handler] = {
     "ping": ping.run,
     "list-worlds": list_worlds.run,
+    "validate-yaml": validate_yaml.run,
 }

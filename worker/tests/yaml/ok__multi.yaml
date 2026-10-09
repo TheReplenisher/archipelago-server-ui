@@ -1,0 +1,9 @@
+name: First
+game: APQuest
+APQuest:
+  hammer: true
+---
+---
+name: Second
+game: APQuest
+APQuest: {}

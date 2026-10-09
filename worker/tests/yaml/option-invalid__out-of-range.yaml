@@ -1,0 +1,4 @@
+name: OutOfRange
+game: APQuest
+APQuest:
+  trap_chance: 250

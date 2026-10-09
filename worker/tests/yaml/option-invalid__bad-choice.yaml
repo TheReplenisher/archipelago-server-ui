@@ -1,0 +1,6 @@
+name: BadChoice
+game: APQuest
+APQuest:
+  player_sprite:
+    dragon: 1
+    duck: 1

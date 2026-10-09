@@ -19,7 +19,8 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export const postJson = <T>(path: string) => getJson<T>(path, { method: 'POST' })
+export const postJson = <T>(path: string, body?: BodyInit) =>
+  getJson<T>(path, { method: 'POST', body })
 
 /** The API's short error message (`detail.message`), else the HTTP status. */
 async function errorMessage(response: Response): Promise<string> {
@@ -53,3 +54,27 @@ export interface Game {
 
 export const getGame = (signal?: AbortSignal) => getJson<Game>('/game', { signal })
 export const runGameAction = (action: GameAction) => postJson<Game>(`/game/${action}`)
+
+export type UploadStatus = 'pending' | 'accepted' | 'rejected' | 'removed'
+
+export interface Upload {
+  id: number
+  kind: string
+  filename: string
+  status: UploadStatus
+  error_code: string | null
+  error_message: string | null
+  uploaded_at: string
+  checked_at: string | null
+  slots: string[]
+}
+
+export const listUploads = (signal?: AbortSignal) => getJson<Upload[]>('/uploads', { signal })
+
+export function uploadYaml(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return postJson<Upload>('/uploads/yaml', form)
+}
+
+export const removeUpload = (id: number) => getJson<Upload>(`/uploads/${id}`, { method: 'DELETE' })

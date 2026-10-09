@@ -89,4 +89,53 @@ builtin = [w for w in out["worlds"] if w["builtin"]]
 print(f"worker: list-worlds found {len(builtin)} built-in games")
 PY
 
+echo "--- worker: validate-yaml against the sample YAMLs (worker/tests/yaml)"
+yamls=$(cd "$(dirname "$0")/../worker/tests/yaml" && pwd)
+jobs=$(mktemp -d)  # a fresh queue; the earlier jobs stay behind in the first one
+chmod 777 "$jobs"
+"$engine" run --rm -i -v "$jobs:/jobs:Z" -v "$yamls:/yamls:ro,Z" \
+    --entrypoint /opt/archipelago-venv/bin/python "$image" - <<'PY'
+import shutil
+from pathlib import Path
+from apsui_worker.protocol import INPUT_DIR, SPEC_FILE, JobDirs, JobSpec, State, new_job_id, now, write_json_atomic
+
+dirs = JobDirs(Path("/jobs"))
+dirs.ensure()
+for sample in sorted(Path("/yamls").glob("*.yaml")):
+    job_id = new_job_id()
+    tmp = dirs.path(State.TMP, job_id)
+    (tmp / INPUT_DIR).mkdir(parents=True)
+    shutil.copy(sample, tmp / INPUT_DIR / "upload.yaml")
+    spec = JobSpec(id=job_id, type="validate-yaml", params={"sample": sample.name},
+                   timeout=120, submitted_at=now())
+    write_json_atomic(tmp / SPEC_FILE, spec.to_json())
+    tmp.rename(dirs.path(State.QUEUE, job_id))
+PY
+"$engine" run --rm --network none --read-only --tmpfs /tmp -v "$jobs:/jobs:Z" \
+    "$image" apsui-worker --jobs-dir /jobs --once 2>/dev/null
+"$engine" run --rm -i -v "$jobs:/jobs:Z" --entrypoint /opt/archipelago-venv/bin/python "$image" - <<'PY'
+import sys
+from pathlib import Path
+from apsui_worker.protocol import RESULT_FILE, SPEC_FILE, JobDirs, JobResult, State, read_json_file
+
+dirs = JobDirs(Path("/jobs"))
+failures = []
+for job_id in dirs.ids(State.DONE):
+    sample = read_json_file(dirs.path(State.DONE, job_id) / SPEC_FILE)["params"]["sample"]
+    expected = sample.split("__")[0]
+    result = JobResult.from_json(read_json_file(dirs.path(State.DONE, job_id) / RESULT_FILE))
+    if result.status != "ok":
+        failures.append(f"{sample}: job {result.status}: {result.error}")
+        continue
+    out = result.output
+    errors = [out["error"]] if out["error"] else []
+    errors += [d["error"] for d in out["documents"] if d.get("error")]
+    got = errors[0]["code"] if errors else "ok"
+    print(f"  {sample}: {got}" + (f" ({errors[0]['message']})" if errors else ""))
+    if got != expected:
+        failures.append(f"{sample}: expected {expected}, got {got}: {errors}")
+if failures:
+    sys.exit("\n".join(failures))
+PY
+
 echo "smoke test passed"

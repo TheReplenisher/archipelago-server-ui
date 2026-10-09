@@ -2,6 +2,7 @@ import { Alert, Stack, Text, Title } from '@mantine/core'
 import { IconAlertTriangle } from '@tabler/icons-react'
 import { BackendStatus } from '../components/BackendStatus'
 import { CurrentGame } from '../components/CurrentGame'
+import { Uploads } from '../components/Uploads'
 
 export function AdminPage() {
   return (
@@ -12,9 +13,10 @@ export function AdminPage() {
         the internet.
       </Alert>
       <CurrentGame />
+      <Uploads />
       <BackendStatus />
       <Text c="dimmed">
-        Uploads, generation, the console and settings will appear here as Alpha 1 is built.
+        Generation, the console and settings will appear here as Alpha 1 is built.
       </Text>
     </Stack>
   )

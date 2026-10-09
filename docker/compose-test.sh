@@ -51,6 +51,23 @@ assert job is not None and job.status == "ok", (job.status if job else None, job
 print("ping job: ok")
 PY
 
+echo "--- YAML uploads: web -> worker (real Archipelago) -> slots"
+base="http://127.0.0.1:$APSUI_WEB_PORT/api"
+for sample in ok__weighted name-too-long__long; do
+    curl -fsS -F "file=@$here/worker/tests/yaml/$sample.yaml" "$base/uploads/yaml" >/dev/null
+done
+for _ in $(seq 60); do
+    curl -fsS "$base/uploads" | grep -q '"status":"pending"' || break
+    sleep 1
+done
+uploads=$(curl -fsS "$base/uploads")
+echo "$uploads" | grep -q '"filename":"ok__weighted.yaml","status":"accepted"' \
+    || { echo "weighted YAML not accepted: $uploads"; exit 1; }
+echo "$uploads" | grep -q '"error_code":"name-too-long"' \
+    || { echo "long name not rejected: $uploads"; exit 1; }
+curl -fsS "$base/slots" | grep -q '"name":"Quester"' || { echo "no Quester slot"; exit 1; }
+echo "uploads: ok"
+
 # Checks run inside every service.
 common_checks='
 import os, sys

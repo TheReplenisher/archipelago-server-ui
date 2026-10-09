@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from apsui.db import get_session
 from apsui.lifecycle import Action, GameState, TransitionError, allowed_actions, apply, current_game
 from apsui.models import Game
+from apsui.uploads import pending_count
 
 router = APIRouter(prefix="/game", tags=["game"])
 
@@ -53,7 +54,13 @@ def _admin_action(session: Session, action: Action) -> GameOut:
 
 @router.post("/lock")
 def lock(session: SessionDep) -> GameOut:
-    """Freeze uploads so the admin can review them before generating."""
+    """Freeze uploads so the admin can review them before generating. Refused while a
+    file is still being checked, so what gets generated is settled."""
+    if pending_count(session, current_game(session).id):
+        raise HTTPException(
+            409,
+            detail={"code": "uploads-pending", "message": "Wait until every file is checked"},
+        )
     return _admin_action(session, Action.LOCK)
 
 

@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     control_socket: Path = Path("/run/apsui/control.sock")
     """The server supervisor's control socket (#70)."""
 
+    max_slots: int = 50
+    """The most player slots one game may have (DESIGN.md §4). Moves to the settings page
+    with #25."""
+
     static_dir: Path | None = None
     """Built frontend. Defaults to frontend/dist when running from a source checkout."""
 
@@ -39,6 +43,16 @@ class Settings(BaseSettings):
     @property
     def resolved_jobs_dir(self) -> Path:
         return self.jobs_dir or self.data_dir / "jobs"
+
+    @property
+    def uploads_dir(self) -> Path:
+        """Files waiting for their checks. Web service only."""
+        return self.data_dir / "uploads"
+
+    @property
+    def game_dir(self) -> Path:
+        """The current game's files, shared with the server service."""
+        return self.data_dir / "game"
 
     @property
     def resolved_static_dir(self) -> Path | None:

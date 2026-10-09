@@ -237,7 +237,23 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
 5. The total slot count stays under the admin's **max slots** setting. If `allow_quantity`
    is on, each document's quantity counts toward it.
 
-Steps 3–4 import world code, so they run **in the worker**.
+Steps 3–4 import world code, so they run **in the worker** (the `validate-yaml` job,
+#20). Decided while building it:
+
+- **Every value that could be rolled is checked,** not just one roll: each key of a
+  weighted option with a non-zero weight, each list item, then the option's own
+  `verify()`. Archipelago's `roll_settings()` then runs 5 times, which also exercises
+  triggers, linked options and `requires`.
+- **The name must be one fixed string.** Weighted names and templates (`%number%`,
+  `%player%`) are rejected, because a slot is logged in to by name (§6).
+- **Unknown option names are warnings, not errors,** as in Archipelago itself.
+- **`quantity` above 1 is rejected** until `allow_quantity` exists on the settings page
+  (#25); with fixed names it could never be unique anyway.
+- **Names and the slot limit are checked by the web service** when the job finishes, since
+  they depend on the other uploads. Names are compared without case, as Archipelago does.
+- **The accepted file is always the admin's own bytes,** kept in web-only storage while it
+  is checked, never a copy back from the worker.
+- **Lock waits for checks:** the game can't be locked while a file is still being checked.
 
 **No solo test generation.** Some YAMLs fail on their own but work in a full multiworld,
 so a solo test would reject good uploads.
