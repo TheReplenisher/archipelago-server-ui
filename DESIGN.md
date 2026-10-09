@@ -98,6 +98,28 @@ It learns what it needs through the AP network protocol and from files the worke
   untrusted: results must name the right job, are size-limited, and symlinks or other
   non-regular files are never followed.
 
+### Mounts, networks and the control channel (#13, #70)
+
+| | web | worker | server |
+|---|---|---|---|
+| `/data` (database, library, archives) | ✔ | — | — |
+| `/data/jobs` (job queue) | ✔ | ✔ | — |
+| `/data/game` (current game) | ✔ | — | ✔ |
+| `/run/apsui` (sockets) | ✔ | — | ✔ |
+| Network | `web` (UI port) | **none** | `game` (game port) |
+
+- **Every service** runs as uid 10001 with a read-only root, no capabilities and
+  `no-new-privileges`, under its own memory and process limits.
+- **The web service and the server share no network.** The web service talks to the
+  server's supervisor through a **Unix socket** in `/run/apsui` (decided in #70): no
+  listening port, and filesystem permissions are the authentication. The web service's own
+  Archipelago-protocol connections (observer feed, slot logins) will go through a second
+  socket there that the supervisor relays to MultiServer (#24, #27, #30). So code in the
+  server container has **no route to the web API** — checked by `docker/compose-test.sh`,
+  by name and by address.
+- **Healthchecks:** web `/api/health`; worker a heartbeat file it updates every few seconds,
+  also during a long job; server the supervisor answering `status` on the socket.
+
 ### The server service also runs apworld code (#5)
 
 Archipelago's MultiServer imports **every** world in its worlds folder when it starts,
@@ -146,8 +168,9 @@ hosting work. Each release is tested under emulated arm64 before it ships.
   jobs/                 worker job queue: tmp/, queue/, running/, done/ (shared with the worker)
   library/apworlds/     every approved apworld, stored by hash
   library/roms/         (Future) admin-approved base ROMs; never served to users
-  games/current/        YAMLs, chosen apworlds, output zip, save file, logs
-  games/staging/        (Beta) uploads for the next game while one is running
+  game/                 the current game: YAMLs, chosen apworlds, output zip, save file, logs
+                        (shared with the server)
+  staging/              (Beta) uploads for the next game while one is running
   archives/<id>/        archived games (zip + metadata)
   backups/              (Alpha 2) app backups
 ```

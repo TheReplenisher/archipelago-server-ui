@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 import signal
 import subprocess
 import sys
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 from apsui_worker.child import CHILD_RESULT_FILE
 from apsui_worker.protocol import (
+    HEARTBEAT_INTERVAL,
     LOG_FILE,
     JobError,
     JobResult,
@@ -23,7 +27,13 @@ from apsui_worker.protocol import (
 LOG_TAIL_BYTES = 64_000
 
 
-def run_job(job_dir: Path, spec: JobSpec, archipelago_dir: Path, max_timeout: float) -> JobResult:
+def run_job(
+    job_dir: Path,
+    spec: JobSpec,
+    archipelago_dir: Path,
+    max_timeout: float,
+    beat: Callable[[], None] = lambda: None,
+) -> JobResult:
     started = now()
     timeout = min(spec.timeout, max_timeout)
     home = job_dir / "home"
@@ -51,13 +61,18 @@ def run_job(job_dir: Path, spec: JobSpec, archipelago_dir: Path, max_timeout: fl
             stderr=subprocess.STDOUT,
             start_new_session=True,  # its own process group, so a timeout kills everything
         )
-        try:
-            process.wait(timeout=timeout)
-            timed_out = False
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-            timed_out = True
+        deadline = time.monotonic() + timeout
+        timed_out = False
+        while process.poll() is None:
+            beat()  # a long generation must not look like a hung worker
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+                timed_out = True
+                break
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                process.wait(timeout=min(HEARTBEAT_INTERVAL, remaining))
 
     log_tail = _tail(job_dir / LOG_FILE)
     shutil.rmtree(home, ignore_errors=True)

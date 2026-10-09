@@ -6,7 +6,9 @@ license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.16",
-    # Only for apsui_worker.protocol, the job file format. Never imports Archipelago.
+    # Only for the protocols: apsui_worker.protocol (job files) and apsui_server.protocol
+    # (control socket). Neither imports Archipelago.
+    "apsui-server",
     "apsui-worker",
     "fastapi>=0.120",
     "pydantic-settings>=2.10",
@@ -18,6 +20,7 @@ dependencies = [
 apsui-web = "apsui.__main__:main"
 
 [tool.uv.sources]
+apsui-server = { path = "../server", editable = true }
 apsui-worker = { path = "../worker", editable = true }
 
 [dependency-groups]

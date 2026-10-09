@@ -1,0 +1,4 @@
+#!/bin/sh
+# The server service's supervisor. Always runs with Archipelago's environment, never the
+# web service's.
+exec /opt/archipelago-venv/bin/python -m apsui_server "$@"

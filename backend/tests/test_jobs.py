@@ -146,7 +146,8 @@ def test_restart_clears_half_assembled_jobs(queue: JobQueue) -> None:
 
 
 def test_the_web_service_never_loads_archipelago() -> None:
-    import apsui.main  # noqa: F401
+    import apsui.main
+    import apsui.server_control  # noqa: F401
 
     loaded = {"worlds", "Utils", "BaseClasses", "MultiServer", "NetUtils"} & set(sys.modules)
     assert not loaded

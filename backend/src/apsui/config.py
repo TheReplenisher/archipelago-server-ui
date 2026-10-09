@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     job_poll_interval: float = 1.0
     """Seconds between checks for finished worker jobs."""
 
+    control_socket: Path = Path("/run/apsui/control.sock")
+    """The server supervisor's control socket (#70)."""
+
     static_dir: Path | None = None
     """Built frontend. Defaults to frontend/dist when running from a source checkout."""
 

@@ -19,7 +19,11 @@ def static_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def settings(tmp_path: Path, static_dir: Path) -> Settings:
-    return Settings(data_dir=tmp_path / "data", static_dir=static_dir)
+    return Settings(
+        data_dir=tmp_path / "data",
+        static_dir=static_dir,
+        control_socket=tmp_path / "no-supervisor.sock",
+    )
 
 
 @pytest.fixture

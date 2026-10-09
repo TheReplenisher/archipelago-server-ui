@@ -133,3 +133,29 @@ def test_reading_refuses_symlinks_and_oversized_files(tmp_path: Path) -> None:
     big.write_text(json.dumps("x" * 100))
     with pytest.raises(ProtocolError):
         read_json_file(big, max_bytes=50)
+
+
+def test_heartbeat_continues_while_a_job_runs(
+    dirs: JobDirs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import apsui_worker.runner
+
+    monkeypatch.setattr(apsui_worker.runner, "HEARTBEAT_INTERVAL", 0.1)
+    beats: list[float] = []
+    enqueue(dirs, "ping", {"sleep": 0.6})
+    job_id = claim_next(dirs)
+    assert job_id is not None
+    from apsui_worker.protocol import JobSpec
+    from apsui_worker.runner import run_job
+
+    job_dir = dirs.path(State.RUNNING, job_id)
+    spec = JobSpec.from_json(read_json_file(job_dir / SPEC_FILE))
+    run_job(job_dir, spec, AP_DIR, 60, beat=lambda: beats.append(1))
+    assert len(beats) >= 3
+
+
+def test_heartbeat_age(dirs: JobDirs) -> None:
+    assert dirs.heartbeat_age() is None
+    dirs.beat()
+    age = dirs.heartbeat_age()
+    assert age is not None and age < 5

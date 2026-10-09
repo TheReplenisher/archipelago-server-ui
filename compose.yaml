@@ -1,0 +1,102 @@
+# Archipelago Server UI: Docker Compose stack (DESIGN.md §2).
+#
+#   docker compose up -d
+#
+# One image, three services. Settings come from the environment or a .env file next to
+# this file; every variable below has a default.
+#
+#   APSUI_IMAGE           image to run          (default: the latest build of main)
+#   APSUI_WEB_PORT        web UI, plain HTTP    (default 8000; put HTTPS in front of it)
+#   APSUI_GAME_PORT       Archipelago clients   (default 38281)
+#   APSUI_WEB_MEMORY      memory limits         (defaults 512m / 2g / 1g)
+#   APSUI_WORKER_MEMORY
+#   APSUI_SERVER_MEMORY
+#   APSUI_WORKER_CPUS     CPU limit for generation and validation (default 2)
+
+name: archipelago-server-ui
+
+# Every service: unprivileged, read-only root, no capabilities, no privilege escalation.
+x-hardened: &hardened
+  image: ${APSUI_IMAGE:-ghcr.io/thereplenisher/archipelago-server-ui:edge}
+  user: "10001:10001"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp:size=64m"]
+  init: true
+  restart: unless-stopped
+
+services:
+  # UI, API, database and secrets. Never runs Archipelago code.
+  web:
+    <<: *hardened
+    command: ["apsui-web"]
+    ports: ["${APSUI_WEB_PORT:-8000}:8000"]
+    networks: [web]
+    volumes:
+      - data:/data
+      - jobs:/data/jobs
+      - game:/data/game
+      - run:/run/apsui
+    mem_limit: ${APSUI_WEB_MEMORY:-512m}
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Runs YAML validation, apworld import tests and generation: apworld code.
+  # No network at all, and it sees only the job queue.
+  worker:
+    <<: *hardened
+    command: ["apsui-worker"]
+    network_mode: none
+    volumes:
+      - jobs:/data/jobs
+    mem_limit: ${APSUI_WORKER_MEMORY:-2g}
+    cpus: ${APSUI_WORKER_CPUS:-2}
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD", "/opt/archipelago-venv/bin/python", "-m", "apsui_worker.health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Runs MultiServer for the current game, which also imports apworld code (#5).
+  # Players reach it on the game port; the web service reaches it only through the
+  # sockets in /run/apsui (#70), never over a network, so code in this container has no
+  # route to the web API.
+  server:
+    <<: *hardened
+    command: ["apsui-server"]
+    ports: ["${APSUI_GAME_PORT:-38281}:38281"]
+    networks: [game]
+    volumes:
+      - game:/data/game
+      - run:/run/apsui
+    mem_limit: ${APSUI_SERVER_MEMORY:-1g}
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "/opt/archipelago-venv/bin/python", "-m", "apsui_server.client", "status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  web: {}
+  game: {}
+
+# data: database, apworld library, archives (web only)
+# jobs: worker job queue (web + worker)
+# game: the current game's files (web + server)
+# run:  control socket (web + server)
+volumes:
+  data: {}
+  jobs: {}
+  game: {}
+  run: {}

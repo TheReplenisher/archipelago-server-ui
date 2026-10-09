@@ -17,8 +17,9 @@ FROM python:${PYTHON_VERSION}-trixie AS build
 COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 
-# web service (it uses the worker package only for the job file format)
+# web service (it uses the worker and server packages only for their protocols)
 COPY worker/ /src/worker/
+COPY server/ /src/server/
 WORKDIR /src/backend
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN UV_PROJECT_ENVIRONMENT=/opt/apsui/venv uv sync --locked --no-dev --no-editable --no-install-project
@@ -33,8 +34,8 @@ RUN uv venv /opt/archipelago-venv --python /usr/local/bin/python3 \
  && install-archipelago.sh /opt/archipelago /opt/archipelago-venv/bin/python \
  && /opt/archipelago-venv/bin/python -m compileall -q /opt/archipelago
 
-# worker service: standard library only, runs jobs with Archipelago's own environment
-RUN uv pip install --python /opt/archipelago-venv/bin/python --no-deps /src/worker
+# worker and server services: standard library only, run with Archipelago's environment
+RUN uv pip install --python /opt/archipelago-venv/bin/python --no-deps /src/worker /src/server
 
 # ---- runtime
 FROM python:${PYTHON_VERSION}-slim-trixie
@@ -45,13 +46,14 @@ LABEL org.opencontainers.image.title="Archipelago Server UI" \
 
 RUN groupadd --system --gid 10001 apsui \
  && useradd --system --uid 10001 --gid apsui --home-dir /data --no-create-home apsui \
- && install -d -o apsui -g apsui /data
+ && install -d -o apsui -g apsui /data /data/jobs /data/game \
+ && install -d -o apsui -g apsui -m 0770 /run/apsui
 
 COPY --from=build /opt/apsui/venv /opt/apsui/venv
 COPY --from=build /opt/archipelago-venv /opt/archipelago-venv
 COPY --from=build /opt/archipelago /opt/archipelago
 COPY --from=frontend /src/frontend/dist /opt/apsui/static
-COPY docker/apsui-worker /usr/local/bin/apsui-worker
+COPY docker/apsui-worker docker/apsui-server /usr/local/bin/
 
 ENV PATH=/opt/apsui/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \

@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from apsui_worker.protocol import (
+    HEARTBEAT_INTERVAL,
     RESULT_FILE,
     SPEC_FILE,
     JobDirs,
@@ -59,7 +60,7 @@ def process_one(dirs: JobDirs, archipelago_dir: Path, max_timeout: float) -> boo
         finish(dirs, _failed(dirs, job_id, "bad-spec", str(exc)))
         return True
     log.info("job %s (%s) started", job_id, spec.type)
-    result = run_job(job_dir, spec, archipelago_dir, max_timeout)
+    result = run_job(job_dir, spec, archipelago_dir, max_timeout, beat=dirs.beat)
     log.info("job %s (%s) finished: %s", job_id, spec.type, result.status)
     finish(dirs, result)
     return True
@@ -95,11 +96,12 @@ def run(
     dirs.ensure()
     recover(dirs)
     while True:
+        dirs.beat()
         worked = process_one(dirs, archipelago_dir, max_timeout)
         if once and not worked:
             return
         if not worked:
-            time.sleep(poll_interval)
+            time.sleep(min(poll_interval, HEARTBEAT_INTERVAL))
 
 
 def main() -> None:
