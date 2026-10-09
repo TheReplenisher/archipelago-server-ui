@@ -1,0 +1,28 @@
+name: Archipelago releases
+
+# Daily check for Archipelago releases newer than the Dockerfile's AP_VERSION, release
+# candidates included. Opens one `upstream` issue per new version and comments on it as
+# further RCs and the final release appear. Never changes code.
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check for new Archipelago releases
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 .github/scripts/archipelago_releases.py
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}

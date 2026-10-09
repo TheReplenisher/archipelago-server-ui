@@ -27,6 +27,9 @@ It installs as a Docker Compose stack or into a Proxmox LXC, and is built for HT
 - **One live multiworld per install.** Concurrent rooms are a Future item.
 - **Archipelago is pinned per release** (currently targeting **0.6.8**). Admin-selectable
   AP versions are a *possible* Future item, not a commitment.
+  - The pin is `ARG AP_VERSION` in the Dockerfile. A daily workflow opens an `upstream`
+    issue for each newer AP version, starting at its first release candidate, with an
+    upgrade checklist.
 - **Archipelago's own trust model is kept, not reinvented.** A slot is accessed with its
   slot name plus the server password, exactly as a game client would.
 
