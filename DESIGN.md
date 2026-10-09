@@ -178,10 +178,11 @@ hosting work. Each release is tested under emulated arm64 before it ships.
 ## 3. Game lifecycle
 
 ```
-Open ──► Locked ──► Generating ──► Generated ──► Scheduled ──► Running ──► Archived
- ▲          │            │              │           (Beta)        │            │
- │          └── unlock ◄─┴── on failure ┘                         │            │
- └───────────────────────── new game ◄────────────────────────────┴── restore ◄┘
+Open ──► Locked ──► Generating ──► Generated ──► Running ──► Archived
+ ▲          │            │              │  ▲         │           │
+ │          └─ unlock ◄──┴─ on failure ─┘  └── stop ─┘           │
+ └──────────────────── new game (ARCHIVE) ◄──────────────────────┘
+                          restore: Archived ──► Generated
 ```
 
 | State | Meaning |
@@ -189,11 +190,28 @@ Open ──► Locked ──► Generating ──► Generated ──► Schedul
 | **Open** | Uploads accepted (admin-only in Alpha 1; players from Alpha 2) |
 | **Locked** | Uploads frozen; admin reviews before generating |
 | **Generating** | Worker runs generation. Failures go to the generation log, and the state returns to Locked |
-| **Generated** | Output exists. The admin can run the **test server** (Beta) or start the live server |
-| **Scheduled** | (Beta) A countdown to start is running |
+| **Generated** | Output exists and the server is stopped. The admin can start it, run the **test server** (Beta), or discard the output to change uploads |
+| **Scheduled** | (Beta) A countdown to start is running, between Generated and Running |
 | **Running** | The live server is up. The admin has **Start / Stop / Save** |
 | **Archived** | Read-only, downloadable and restorable |
 
+**Transitions (#17)** — enforced in `apsui/lifecycle.py`; nothing else changes a game's state:
+
+| Action | From | To |
+|---|---|---|
+| lock / unlock | Open ⇄ Locked | |
+| generate | Locked | Generating |
+| generation succeeded / failed | Generating | Generated / Locked |
+| discard output | Generated | Locked |
+| start / stop | Generated ⇄ Running | |
+| archive | Generated or Running | Archived, and a new Open game becomes current |
+| restore | Archived | Generated |
+
+- **Exactly one game is current**, enforced by the database. A state change is a
+  conditional update on the state it was read in, so two simultaneous requests can't both
+  move the game.
+- **Stop keeps the game resumable:** it returns to Generated with its save file, and Start
+  continues it.
 - **Generation is always started manually by the admin.**
 - **Start / Stop / Save:** Stop is a clean shutdown with a save. Save writes the save
   file without stopping the server.

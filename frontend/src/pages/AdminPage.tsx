@@ -1,6 +1,7 @@
 import { Alert, Stack, Text, Title } from '@mantine/core'
 import { IconAlertTriangle } from '@tabler/icons-react'
 import { BackendStatus } from '../components/BackendStatus'
+import { CurrentGame } from '../components/CurrentGame'
 
 export function AdminPage() {
   return (
@@ -10,9 +11,10 @@ export function AdminPage() {
         Anyone who can reach this page can manage the server. Do not expose an Alpha 1 install to
         the internet.
       </Alert>
+      <CurrentGame />
       <BackendStatus />
       <Text c="dimmed">
-        Game lifecycle, uploads, console and settings will appear here as Alpha 1 is built.
+        Uploads, generation, the console and settings will appear here as Alpha 1 is built.
       </Text>
     </Stack>
   )
