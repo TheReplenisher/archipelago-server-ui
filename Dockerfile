@@ -5,7 +5,7 @@ ARG AP_VERSION=0.6.8
 ARG PYTHON_VERSION=3.12
 
 # ---- frontend: platform-independent static files, so build once on the build host
-FROM --platform=$BUILDPLATFORM node:24-slim AS frontend
+FROM --platform=$BUILDPLATFORM node:25-slim AS frontend
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
