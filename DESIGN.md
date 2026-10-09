@@ -109,8 +109,8 @@ item, and if built it must show a warning on the health page.
 | Frontend | React + TypeScript + Vite, Mantine component library |
 | Live updates | WebSocket from web service to browser |
 | Storage | SQLite (SQLAlchemy; Alembic migrations applied at startup) + a data directory (uploads, library, games, archives) |
-| Archipelago | Run from source at a pinned tag (needed for arm64), **without the desktop GUI dependencies** (kivy/kivymd) |
-| Packaging | One multi-arch image (amd64 primary, arm64 supported), GHCR |
+| Archipelago | Run from source at a pinned tag (needed for arm64), **without the desktop GUI dependencies** (kivy/kivymd). Every built-in world's requirements are installed except `dolphin-memory-engine` (The Wind Waker's game client only; no arm64 wheel). `requests` and `setuptools<81`, which a normal install gets implicitly, are added explicitly (`docker/install-archipelago.sh`) |
+| Packaging | One multi-arch image (amd64 primary, arm64 supported), GHCR. Each architecture is built and smoke-tested on a native CI runner |
 
 **arm64 matters** because Oracle Cloud's free tier is Ampere ARM. It was verified in #8:
 every server and generator dependency has a native aarch64 wheel, and generation and

@@ -1,0 +1,12 @@
+# Keep the build context to what the Dockerfile copies.
+**/node_modules
+**/dist
+**/.venv
+**/__pycache__
+**/.ruff_cache
+**/.mypy_cache
+**/.pytest_cache
+.git
+.github
+.dev-data
+data
