@@ -9,14 +9,15 @@
 version: 2
 
 updates:
+  # The three Python packages (each has its own uv.lock)
   - package-ecosystem: uv
-    directory: /backend
+    directories: [/backend, /worker, /server]
     schedule:
       interval: weekly
     cooldown:
       default-days: 7
     groups:
-      backend:
+      python:
         update-types: [minor, patch]
 
   - package-ecosystem: npm
