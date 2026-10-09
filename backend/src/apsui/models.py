@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from apsui.db import Base
@@ -27,4 +27,19 @@ class Job(Base):
     """The worker's full result: output, error with traceback, and the log tail."""
 
 
-__all__ = ["Base", "Job"]
+class Game(Base):
+    """A multiworld game. Exactly one is current; the rest are archived (DESIGN.md §3).
+    The state only changes through apsui.lifecycle.apply()."""
+
+    __tablename__ = "games"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    state: Mapped[str] = mapped_column(String(16))
+    is_current: Mapped[bool | None] = mapped_column(Boolean, unique=True)
+    """True for the current game, NULL once archived: the unique constraint allows only one."""
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+__all__ = ["Base", "Game", "Job"]

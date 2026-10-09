@@ -3,8 +3,19 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderRoute } from './test/render'
 
-function stubHealth(response: Promise<Response>) {
-  const fetchMock = vi.fn(() => response)
+const openGame = {
+  id: 1,
+  state: 'open',
+  created_at: '2026-10-09T00:00:00Z',
+  updated_at: '2026-10-09T00:00:00Z',
+  actions: ['lock'],
+}
+
+/** Answers /api/health with `health` and /api/game like a fresh install. */
+function stubHealth(health: () => Promise<Response>) {
+  const fetchMock = vi.fn((input: RequestInfo | URL) =>
+    String(input) === '/api/game' ? Promise.resolve(Response.json(openGame)) : health(),
+  )
   vi.stubGlobal('fetch', fetchMock)
   return fetchMock
 }
@@ -20,7 +31,7 @@ describe('app shell', () => {
   })
 
   it('switches between the Player and Admin tabs', async () => {
-    stubHealth(okHealth())
+    stubHealth(okHealth)
     const { router } = renderRoute('/player')
     const mainNav = screen.getByRole('navigation', { name: 'Main' })
 
@@ -37,21 +48,63 @@ describe('app shell', () => {
 
 describe('admin page', () => {
   it('warns that Alpha 1 has no admin login', () => {
-    stubHealth(okHealth())
+    stubHealth(okHealth)
     renderRoute('/admin')
     expect(screen.getByText('No admin login in Alpha 1')).toBeInTheDocument()
   })
 
   it('shows the backend version when the API is up', async () => {
-    const fetchMock = stubHealth(okHealth())
+    const fetchMock = stubHealth(okHealth)
     renderRoute('/admin')
     expect(await screen.findByText('Online · v1.2.3')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/health', expect.anything())
   })
 
   it('says so when the API is unreachable', async () => {
-    stubHealth(Promise.reject(new TypeError('Failed to fetch')))
+    stubHealth(() => Promise.reject(new TypeError('Failed to fetch')))
     renderRoute('/admin')
     await waitFor(() => expect(screen.getByText('Unreachable')).toBeInTheDocument())
+  })
+})
+
+describe('current game', () => {
+  it('shows the state and moves it with the allowed action', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/game/lock' && init?.method === 'POST')
+        return Promise.resolve(Response.json({ ...openGame, state: 'locked', actions: ['unlock'] }))
+      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    expect(await screen.findByText('Open')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Lock uploads' }))
+    expect(await screen.findByText('Locked')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Unlock uploads' })).toBeInTheDocument()
+  })
+
+  it("shows the API's message when an action is refused", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === '/api/game/lock' && init?.method === 'POST')
+          return Promise.resolve(
+            Response.json(
+              {
+                detail: { code: 'invalid-transition', message: "Can't lock a game that is locked" },
+              },
+              { status: 409 },
+            ),
+          )
+        if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+        return okHealth()
+      }),
+    )
+    renderRoute('/admin')
+    await userEvent.click(await screen.findByRole('button', { name: 'Lock uploads' }))
+    expect(await screen.findByText("Can't lock a game that is locked")).toBeInTheDocument()
   })
 })
