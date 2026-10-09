@@ -79,6 +79,25 @@ and resource limits. Under LXC, the same restrictions come from systemd
 The web service holds the database and secrets, and never imports Archipelago world code.
 It learns what it needs through the AP network protocol and from files the worker writes.
 
+### Worker jobs (#16)
+
+- **Jobs pass through `/data/jobs`,** the only part of `/data` the worker can see. Each
+  job is a directory that moves by atomic rename: `tmp/` (the web service assembles
+  `spec.json` and `input/`) → `queue/` → `running/` (claimed by the worker) → `done/`
+  (`result.json`, `log.txt`, `output/`). The format is versioned, in
+  `apsui_worker.protocol`.
+- **One job at a time, oldest first, each in its own child process,** with a per-job time
+  limit. On timeout the job's whole process group is killed. Each job also gets its own
+  Archipelago user folder (`XDG_DATA_HOME`), so the apworlds of one job are never loaded
+  by another.
+- **Results are structured:** status `ok`, `error` or `timeout`, the output, an error
+  code and one-line message, the traceback, and the tail of the log. A job interrupted by
+  a worker restart is failed with code `interrupted`, never retried.
+- **The web service records each job in the `jobs` table,** passes the output to the
+  feature that asked for it, then deletes the files. It treats everything in `done/` as
+  untrusted: results must name the right job, are size-limited, and symlinks or other
+  non-regular files are never followed.
+
 ### The server service also runs apworld code (#5)
 
 Archipelago's MultiServer imports **every** world in its worlds folder when it starts,
@@ -124,6 +143,7 @@ hosting work. Each release is tested under emulated arm64 before it ships.
 ```
 /data
   app.db                SQLite: settings, uploads, library index, logs, audit
+  jobs/                 worker job queue: tmp/, queue/, running/, done/ (shared with the worker)
   library/apworlds/     every approved apworld, stored by hash
   library/roms/         (Future) admin-approved base ROMs; never served to users
   games/current/        YAMLs, chosen apworlds, output zip, save file, logs

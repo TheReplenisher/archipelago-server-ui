@@ -18,6 +18,8 @@ Node.js 22 or newer.
 
 ```
 backend/    FastAPI web service (package `apsui`): API, SQLite + Alembic migrations
+worker/     worker service (package `apsui_worker`): runs jobs that execute Archipelago code;
+            standard library only, installed into Archipelago's own environment
 frontend/   React + TypeScript + Vite + Mantine; built into frontend/dist
 ```
 
@@ -48,7 +50,13 @@ Database changes need a migration:
 A test fails if the models and migrations disagree.
 
 **The web service (`backend/`) must never import Archipelago world code.** Anything
-that runs apworld code belongs in the worker or server service (DESIGN.md §2).
+that runs apworld code belongs in the worker or server service (DESIGN.md §2). The web
+service depends on `apsui_worker` only for `apsui_worker.protocol`, the job file format;
+a test fails if importing the web app loads any Archipelago module.
+
+New worker job types go in `worker/src/apsui_worker/jobs/`: a handler takes the job's
+params and a context, returns a JSON-friendly dict, raises `JobFailure` for an expected
+error, and imports Archipelago inside the function.
 
 ## Pull requests
 

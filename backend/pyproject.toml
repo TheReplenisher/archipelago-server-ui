@@ -6,6 +6,8 @@ license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.16",
+    # Only for apsui_worker.protocol, the job file format. Never imports Archipelago.
+    "apsui-worker",
     "fastapi>=0.120",
     "pydantic-settings>=2.10",
     "sqlalchemy>=2.0",
@@ -14,6 +16,9 @@ dependencies = [
 
 [project.scripts]
 apsui-web = "apsui.__main__:main"
+
+[tool.uv.sources]
+apsui-worker = { path = "../worker", editable = true }
 
 [dependency-groups]
 dev = [

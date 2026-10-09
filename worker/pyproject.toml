@@ -1,0 +1,50 @@
+[project]
+name = "apsui-worker"
+version = "0.1.0.dev0"
+description = "Worker service for Archipelago Server UI: runs jobs that execute Archipelago code."
+license = "MIT"
+requires-python = ">=3.12"
+# Standard library only: this package is installed into Archipelago's own environment.
+dependencies = []
+
+# No console script: the web service's environment also installs this package (for the
+# protocol), and its copy of the command would shadow the real one. The image provides
+# /usr/local/bin/apsui-worker, which runs `python -m apsui_worker.main` with AP's Python.
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17",
+    "pytest>=8.4",
+    "ruff>=0.13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/apsui_worker"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF", "ASYNC", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+strict = true
+packages = ["apsui_worker"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+# Archipelago is imported inside job handlers, at runtime, from AP's source tree.
+module = ["Utils", "worlds", "worlds.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
