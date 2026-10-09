@@ -25,6 +25,10 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      # Matches the Node runtime major; moves with it (see the docker entry below).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       frontend:
         update-types: [minor, patch]
@@ -38,6 +42,12 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      # Node majors are a deliberate upgrade to the next even-numbered LTS, done together in
+      # the Dockerfile, ci.yml (setup-node), frontend/package.json (engines, @types/node).
+      # Without this, Dependabot proposes odd-numbered, non-LTS majors too.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
     groups:
       docker:
         update-types: [minor, patch]
