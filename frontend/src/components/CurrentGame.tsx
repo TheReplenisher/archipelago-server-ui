@@ -12,6 +12,7 @@ import {
   type Generation,
   type ServerStatus,
 } from '../api/client'
+import { PatchFiles } from './PatchFiles'
 
 const stateInfo: Record<GameState, { label: string; color: string; help: string }> = {
   open: { label: 'Open', color: 'green', help: 'Uploads are being accepted.' },
@@ -179,6 +180,9 @@ export function CurrentGame() {
           <ServerLine server={server} />
         ) : (
           generations[0] && <LatestGeneration generation={generations[0]} />
+        )}
+        {(game?.state === 'generated' || game?.state === 'running') && (
+          <PatchFiles key={generations[0]?.id} />
         )}
         {game && game.actions.length > 0 && (
           <Group>
