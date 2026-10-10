@@ -225,6 +225,22 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
 - **Next-game staging (Beta):** while a game is running, players can upload YAMLs for
   the next game.
 
+**Generation, decided while building it (#18):**
+
+- **The worker runs Archipelago's own `Generate` and `Main`** (the `generate` job) on the
+  accepted YAMLs, each named `<upload id>.yaml`, plus the library apworld each game is
+  locked to. It has up to an hour (the worker's maximum). Settings are AP's defaults
+  (full spoiler, plando bosses/connections/texts) until the settings page exists (#25).
+- **The output zip goes to `/data/game/output/`,** where the server service will host it
+  (#24). It is checked first: one plain file named `AP_<seed>.zip` that really is a zip.
+  The worker can't put anything else there.
+- **Every run is recorded** in the generation log: status, seed, players, or the error
+  with AP's traceback and the tail of its log. On failure the log names the uploads AP's
+  error points at, by the YAML's file name or by a slot name it mentions, and the game
+  returns to Locked.
+- **Discard output** (Generated → Locked) deletes the output, so the admin can change
+  uploads or generate again.
+
 ## 4. Uploads and validation
 
 ### YAMLs — "level 1" checks (every upload)
