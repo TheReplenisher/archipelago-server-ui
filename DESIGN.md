@@ -478,6 +478,12 @@ Decided while building it (#23):
 
 - After generation, each slot's patch or mod file (`.apz5` and similar) can be downloaded.
 - **Alpha 1:** admin only. **Alpha 2:** each player can download their own slot's files.
+- Decided while building it (#29): the files are read straight out of the output zip,
+  one at a time or all together as a zip streamed while it is built; nothing is unpacked
+  to disk. Worlds name them `AP_<seed>_P<n>_<name>.<ext>` (most) or `AP-<seed>-P<n>-<name>`
+  (Factorio's mod and a few others); entries matching either, for this game's seed, are
+  listed with their slot, and only listed entries can be downloaded. The multidata and
+  the spoiler log never match (the spoiler viewer is #28).
 
 ### Test server (Beta)
 
