@@ -117,6 +117,7 @@ def submit_yaml(
         size=len(data),
         status="pending",
         worlds={game_name: apworld.id for game_name, apworld in chosen.items()},
+        uploaded_by="admin",
         uploaded_at=datetime.now(UTC),
     )
     session.add(upload)

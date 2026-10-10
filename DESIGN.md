@@ -357,6 +357,22 @@ Every upload (YAML, apworld, and later ROM) gets a log entry containing:
 
 Users only ever see the short error.
 
+Decided while building it (#23):
+
+- **The log is built from what each upload already records:** the upload row, the
+  worker's per-document results, the rename history, and its worker job (the full error,
+  traceback and the tail of the job's log). Nothing extra is stored, and rejected or
+  removed uploads keep their records.
+- **Each entry lists its checks in order,** each with a status (ok, failed, warning or
+  waiting), a one-line message and the full detail where there is one. YAML: stored,
+  parse, each document (warnings included), slot names and renames, custom apworlds,
+  result. Apworld: static inspection, import test, built-in replacement, result.
+- **A rename checks the file again with a new job;** the entry shows the latest job, and
+  the renames are listed with the reasons they were needed.
+- **Error codes link to the entry:** in the admin's upload lists, the code after a short
+  error opens that upload's log. Entries are addressed as `<kind>-<id>`.
+- **"Who" is always the admin in Alpha 1;** player uploads (#30) will record the slot.
+
 ## 5. Running the server
 
 ### Admin console and command assistance

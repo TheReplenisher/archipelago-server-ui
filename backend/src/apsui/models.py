@@ -70,6 +70,9 @@ class Upload(Base):
     """The library apworlds it was checked with, {game: apworld id}. Any other game used
     the official built-in world."""
     job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"))
+    """The latest check. A rename checks the file again with a new job."""
+    uploaded_by: Mapped[str] = mapped_column(String(64), server_default="admin")
+    """Only the admin uploads in Alpha 1."""
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

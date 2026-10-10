@@ -1,6 +1,7 @@
 import { Alert, Badge, Button, Card, FileButton, Group, Stack, Table, Text } from '@mantine/core'
 import { IconUpload } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import { ErrorCode } from './ErrorCode'
 import { ReviewApworldModal } from './ReviewApworldModal'
 import { listApworlds, uploadApworld, type Apworld, type ApworldStatus } from '../api/client'
 
@@ -117,7 +118,10 @@ export function Apworlds() {
                     <Table.Td>
                       {a.status === 'rejected' && (
                         <Text size="sm" c="red">
-                          {a.error_message}
+                          {a.error_message}{' '}
+                          {a.error_code && (
+                            <ErrorCode kind="apworld" id={a.id} code={a.error_code} />
+                          )}
                         </Text>
                       )}
                     </Table.Td>
