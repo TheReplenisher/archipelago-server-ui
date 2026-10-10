@@ -579,3 +579,47 @@ describe('server control', () => {
     )
   })
 })
+
+describe('health page', () => {
+  it('shows each service, ports, disk use and an isolation warning', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input) === '/api/health/details')
+          return Promise.resolve(
+            Response.json({
+              version: '1.2.3',
+              archipelago_version: '0.6.8',
+              isolation: 'none',
+              isolation_warning: "Services aren't isolated",
+              services: [
+                { name: 'web', up: true, detail: 'v1.2.3, database ok' },
+                { name: 'worker', up: true, detail: 'Heartbeat 2s ago; 0 queued, 0 running' },
+                { name: 'server', up: false, detail: 'Not answering' },
+              ],
+              ports: [
+                { name: 'Web UI', port: 8000 },
+                { name: 'Game (Archipelago clients)', port: 38281 },
+              ],
+              disks: [
+                {
+                  name: 'Data',
+                  path: '/data',
+                  total: 10 * 1024 ** 3,
+                  used: 4 * 1024 ** 3,
+                  free: 6 * 1024 ** 3,
+                },
+              ],
+            }),
+          )
+        return okHealth()
+      }),
+    )
+    renderRoute('/health')
+    expect(await screen.findByText(/Heartbeat 2s ago/)).toBeInTheDocument()
+    expect(screen.getByText('Down')).toBeInTheDocument()
+    expect(screen.getByText('Reduced isolation')).toBeInTheDocument()
+    expect(screen.getByText('38281')).toBeInTheDocument()
+    expect(screen.getByText('6.0 GB free of 10.0 GB')).toBeInTheDocument()
+  })
+})

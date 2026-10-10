@@ -25,6 +25,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         settings.data_dir.mkdir(parents=True, exist_ok=True)
+        settings.game_dir.mkdir(parents=True, exist_ok=True)
         engine = make_engine(settings.database_url)
         migrate.upgrade(engine)
         app.state.engine = engine

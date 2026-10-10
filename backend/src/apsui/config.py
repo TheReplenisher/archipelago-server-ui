@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     """The pinned Archipelago version, set in the image. Empty skips the apworld version
     range check in the web service; the worker's import test still applies it."""
 
+    isolation: str = "none"
+    """How the services are isolated, for the health page: "compose" (the three hardened
+    containers), "lxc" (#14), or "none" (development: everything runs as one user)."""
+
+    public_web_port: int | None = None
+    public_game_port: int | None = None
+    """The ports published on the host, which the containers can't see for themselves.
+    Compose passes them in; shown on the health page."""
+
     static_dir: Path | None = None
     """Built frontend. Defaults to frontend/dist when running from a source checkout."""
 
