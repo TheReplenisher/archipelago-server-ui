@@ -280,6 +280,30 @@ so a solo test would reject good uploads.
      the approval screen says so plainly.
 4. **Worker import test:** the worker loads the world in isolation and records any errors.
 
+Decided while building it (#21):
+
+- **Static inspection rules** follow what AP 0.6.8 does when it loads a custom world, plus
+  limits that keep a hostile zip cheap to look at: at most 64 MB, 256 MB unpacked and
+  5000 entries; everything inside one folder named after the file, which must be a Python
+  module name (`my_game.apworld` → `my_game/`, with its `__init__.py`); no absolute,
+  `..` or symlinked paths; the manifest's `compatible_version` at most 7.
+- **Only `game` is required in `archipelago.json`,** because AP 0.6.8 loads a world without
+  the rest. The other fields are shown on the approval screen when present. The version
+  range is checked against the pinned AP version (`APSUI_ARCHIPELAGO_VERSION`, set in the
+  image), and again by AP itself in the import test.
+- **A file that fails inspection or the import test is rejected,** not left for the admin:
+  an apworld that can't load can't be used. The record stays, as the upload log (#23).
+  The same bytes can't be uploaded twice while one copy is checking, pending or in the
+  library; after a rejection they can be tried again.
+- **The import test also checks that the world registers the game its manifest names.**
+- **Replacing a built-in world:** AP loads built-in worlds first and skips a custom apworld
+  whose game is already loaded. So the import test unregisters the built-in world in its
+  own process, then loads the apworld the way AP does. Validation, generation and the
+  server need the same treatment before a replacement can be used (#77).
+- **The approval setting** is `APSUI_APWORLD_APPROVAL` (`manual` or `auto`) until the
+  settings page exists (#25). The uploader is always the admin in Alpha 1.
+- **YAMLs can't use library apworlds yet:** picking a version and locking it is #22.
+
 ### The apworld library
 
 - Approved apworlds go into a library and are reused, so the same file is never stored twice.

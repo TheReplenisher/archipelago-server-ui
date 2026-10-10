@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -28,6 +29,14 @@ class Settings(BaseSettings):
     """The most player slots one game may have (DESIGN.md §4). Moves to the settings page
     with #25."""
 
+    apworld_approval: Literal["manual", "auto"] = "manual"
+    """Whether an apworld that passes its checks needs the admin's approval (DESIGN.md §4).
+    One that replaces a built-in world always does. Moves to the settings page with #25."""
+
+    archipelago_version: str = ""
+    """The pinned Archipelago version, set in the image. Empty skips the apworld version
+    range check in the web service; the worker's import test still applies it."""
+
     static_dir: Path | None = None
     """Built frontend. Defaults to frontend/dist when running from a source checkout."""
 
@@ -48,6 +57,11 @@ class Settings(BaseSettings):
     def uploads_dir(self) -> Path:
         """Files waiting for their checks. Web service only."""
         return self.data_dir / "uploads"
+
+    @property
+    def library_dir(self) -> Path:
+        """Approved apworlds, stored by hash. Web service only."""
+        return self.data_dir / "library" / "apworlds"
 
     @property
     def game_dir(self) -> Path:

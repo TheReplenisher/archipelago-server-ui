@@ -63,7 +63,9 @@ Archipelago module.
 
 New worker job types go in `worker/src/apsui_worker/jobs/`: a handler takes the job's
 params and a context, returns a JSON-friendly dict, raises `JobFailure` for an expected
-error, and imports Archipelago inside the function.
+error, and imports Archipelago inside the function. Sample inputs live in
+`worker/tests/yaml/` and `worker/tests/apworld/`, named after the result they should give;
+`docker/smoke-test.sh` runs every one through the real Archipelago in the image.
 
 ## Pull requests
 

@@ -1,5 +1,6 @@
 import { Alert, Stack, Text, Title } from '@mantine/core'
 import { IconAlertTriangle } from '@tabler/icons-react'
+import { Apworlds } from '../components/Apworlds'
 import { BackendStatus } from '../components/BackendStatus'
 import { CurrentGame } from '../components/CurrentGame'
 import { Uploads } from '../components/Uploads'
@@ -14,6 +15,7 @@ export function AdminPage() {
       </Alert>
       <CurrentGame />
       <Uploads />
+      <Apworlds />
       <BackendStatus />
       <Text c="dimmed">
         Generation, the console and settings will appear here as Alpha 1 is built.

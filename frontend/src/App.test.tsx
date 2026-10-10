@@ -16,6 +16,7 @@ function stubHealth(health: () => Promise<Response>) {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
     const url = String(input)
     if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+    if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
     if (url === '/api/uploads') return Promise.resolve(Response.json([]))
     return health()
   })
@@ -77,6 +78,7 @@ describe('current game', () => {
       if (url === '/api/game/lock' && init?.method === 'POST')
         return Promise.resolve(Response.json({ ...openGame, state: 'locked', actions: ['unlock'] }))
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
       return okHealth()
     })
@@ -104,6 +106,7 @@ describe('current game', () => {
             ),
           )
         if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+        if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
         if (url === '/api/uploads') return Promise.resolve(Response.json([]))
         return okHealth()
       }),
@@ -145,6 +148,7 @@ describe('uploads', () => {
         return Promise.resolve(Response.json(rows))
       }
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
       return okHealth()
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -180,6 +184,7 @@ describe('uploads', () => {
             ]),
           )
         if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+        if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
         return okHealth()
       }),
     )
@@ -217,6 +222,7 @@ describe('fixing slot names', () => {
       if (init?.method === 'POST') return Promise.resolve(onPost(url, init))
       if (url === '/api/uploads') return Promise.resolve(Response.json([waiting]))
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
       return okHealth()
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -269,6 +275,76 @@ describe('fixing slot names', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Yes, cancel upload' }))
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/uploads/3/cancel', expect.anything()),
+    )
+  })
+})
+
+describe('apworld approval', () => {
+  const pending = {
+    id: 7,
+    filename: 'apquest.apworld',
+    label: 'APQuest · custom · v9.9.0 · a3f9c1',
+    game: 'APQuest',
+    world_version: '9.9.0',
+    sha256: 'a3f9c1' + '0'.repeat(58),
+    short_hash: 'a3f9c1',
+    size: 2048,
+    status: 'pending',
+    replaces_builtin: '2.0.0',
+    error_code: null,
+    error_message: null,
+    uploaded_by: 'admin',
+    uploaded_at: '2026-10-10T00:00:00Z',
+    checked_at: '2026-10-10T00:00:01Z',
+    decided_at: null,
+  }
+  const detail = {
+    ...pending,
+    module: 'apquest',
+    minimum_ap_version: '0.6.0',
+    maximum_ap_version: null,
+    authors: ['Someone'],
+    manifest: { game: 'APQuest', world_version: '9.9.0' },
+    files: [{ name: 'apquest/__init__.py', size: 120 }],
+    import_test: {
+      loaded: true,
+      games: ['APQuest'],
+      replaces_builtin: '2.0.0',
+      error: null,
+      detail: null,
+    },
+  }
+
+  function stub() {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'POST')
+        return Promise.resolve(Response.json({ ...pending, status: 'approved' }))
+      if (url === '/api/apworlds') return Promise.resolve(Response.json([pending]))
+      if (url === '/api/apworlds/7') return Promise.resolve(Response.json(detail))
+      if (url === '/api/uploads') return Promise.resolve(Response.json([]))
+      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('flags a built-in replacement and approves from the review screen', async () => {
+    const fetchMock = stub()
+    renderRoute('/admin')
+    expect(await screen.findByText('needs approval')).toBeInTheDocument()
+    expect(screen.getByText('replaces built-in')).toBeInTheDocument()
+    expect(screen.getByText('1 waiting for approval')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Review' }))
+    expect(await screen.findByText('Replaces a built-in world')).toBeInTheDocument()
+    expect(screen.getByText(pending.sha256)).toBeInTheDocument()
+    expect(screen.getByText('loaded: APQuest')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/apworlds/7/approve', expect.anything()),
     )
   })
 })

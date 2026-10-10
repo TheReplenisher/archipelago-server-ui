@@ -94,4 +94,39 @@ class Slot(Base):
     upload: Mapped[Upload] = relationship(back_populates="slots")
 
 
-__all__ = ["Base", "Game", "Job", "Slot", "Upload"]
+class Apworld(Base):
+    """An uploaded apworld: waiting for its checks or the admin, in the library, or turned
+    down (DESIGN.md §4). Kept after it is rejected: it is the upload log (#23)."""
+
+    __tablename__ = "apworlds"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    sha256: Mapped[str] = mapped_column(String(64), index=True)
+    size: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16))
+    """checking, pending (waiting for the admin), approved (in the library) or rejected."""
+    module: Mapped[str | None] = mapped_column(String(255))
+    game: Mapped[str | None] = mapped_column(String(255))
+    world_version: Mapped[str | None] = mapped_column(String(32))
+    minimum_ap_version: Mapped[str | None] = mapped_column(String(32))
+    maximum_ap_version: Mapped[str | None] = mapped_column(String(32))
+    authors: Mapped[list[str] | None] = mapped_column(JSON)
+    manifest: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    files: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    replaces_builtin: Mapped[str | None] = mapped_column(String(32))
+    """The built-in world's version, when this apworld's game is built in."""
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    import_result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    """The worker's import test, or the job's error."""
+    job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"))
+    uploaded_by: Mapped[str] = mapped_column(String(64))
+    """Only the admin uploads in Alpha 1."""
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """When it was approved or rejected."""
+
+
+__all__ = ["Apworld", "Base", "Game", "Job", "Slot", "Upload"]

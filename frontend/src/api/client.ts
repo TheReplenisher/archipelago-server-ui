@@ -100,3 +100,58 @@ export const renameUpload = (id: number, names: { document: number; name: string
   postJsonBody<Upload>(`/uploads/${id}/rename`, { names })
 
 export const cancelUpload = (id: number) => postJson<Upload>(`/uploads/${id}/cancel`)
+
+export type ApworldStatus = 'checking' | 'pending' | 'approved' | 'rejected'
+
+export interface Apworld {
+  id: number
+  filename: string
+  /** `Game · custom · version · short hash` */
+  label: string
+  game: string | null
+  world_version: string | null
+  sha256: string
+  short_hash: string
+  size: number
+  status: ApworldStatus
+  /** The built-in world's version, when this apworld would replace it. */
+  replaces_builtin: string | null
+  error_code: string | null
+  error_message: string | null
+  uploaded_by: string
+  uploaded_at: string
+  checked_at: string | null
+  decided_at: string | null
+}
+
+export interface ImportTest {
+  loaded: boolean
+  games: string[]
+  replaces_builtin: string | null
+  error: string | null
+  detail: string | null
+}
+
+export interface ApworldDetail extends Apworld {
+  module: string | null
+  minimum_ap_version: string | null
+  maximum_ap_version: string | null
+  authors: string[]
+  manifest: Record<string, unknown> | null
+  files: { name: string; size: number }[]
+  import_test: ImportTest | null
+}
+
+export const listApworlds = (signal?: AbortSignal) => getJson<Apworld[]>('/apworlds', { signal })
+
+export const getApworld = (id: number, signal?: AbortSignal) =>
+  getJson<ApworldDetail>(`/apworlds/${id}`, { signal })
+
+export function uploadApworld(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return postJson<Apworld>('/apworlds', form)
+}
+
+export const approveApworld = (id: number) => postJson<Apworld>(`/apworlds/${id}/approve`)
+export const rejectApworld = (id: number) => postJson<Apworld>(`/apworlds/${id}/reject`)
