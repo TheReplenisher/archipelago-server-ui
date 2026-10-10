@@ -32,6 +32,11 @@ services:
     <<: *hardened
     command: ["apsui-web"]
     ports: ["${APSUI_WEB_PORT:-8000}:8000"]
+    environment:
+      # Shown on the health page; the container can't see its published ports.
+      APSUI_ISOLATION: compose
+      APSUI_PUBLIC_WEB_PORT: ${APSUI_WEB_PORT:-8000}
+      APSUI_PUBLIC_GAME_PORT: ${APSUI_GAME_PORT:-38281}
     networks: [web]
     volumes:
       - data:/data
