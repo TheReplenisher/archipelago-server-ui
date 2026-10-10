@@ -66,6 +66,9 @@ class Upload(Base):
     """The worker's per-document results, or the job's error."""
     name_problems: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     """While needs-name: one entry per document whose slot name must change."""
+    worlds: Mapped[dict[str, int] | None] = mapped_column(JSON)
+    """The library apworlds it was checked with, {game: apworld id}. Any other game used
+    the official built-in world."""
     job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -129,4 +132,24 @@ class Apworld(Base):
     """When it was approved or rejected."""
 
 
-__all__ = ["Apworld", "Base", "Game", "Job", "Slot", "Upload"]
+class WorldLock(Base):
+    """Which world a game uses in this multiworld: set by the first accepted YAML for it
+    (DESIGN.md §4, version locking). Archipelago allows one world per game."""
+
+    __tablename__ = "world_locks"
+    __table_args__ = (UniqueConstraint("game_id", "world"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id"))
+    world: Mapped[str] = mapped_column(String(255))
+    """The Archipelago game name, e.g. "Hollow Knight"."""
+    apworld_id: Mapped[int | None] = mapped_column(ForeignKey("apworlds.id"))
+    """The library apworld, or NULL for the official built-in world."""
+    upload_id: Mapped[int] = mapped_column(ForeignKey("uploads.id"))
+    """The YAML that set it."""
+    locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    apworld: Mapped[Apworld | None] = relationship()
+
+
+__all__ = ["Apworld", "Base", "Game", "Job", "Slot", "Upload", "WorldLock"]
