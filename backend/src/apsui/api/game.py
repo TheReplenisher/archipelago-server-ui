@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from apsui import hosting
 from apsui.db import get_session
 from apsui.generation import GenerationError, discard_output, start, summary
 from apsui.lifecycle import Action, GameState, TransitionError, allowed_actions, apply, current_game
@@ -14,9 +15,16 @@ from apsui.uploads import unsettled_count
 
 router = APIRouter(prefix="/game", tags=["game"])
 
-ADMIN_ACTIONS = (Action.LOCK, Action.UNLOCK, Action.GENERATE, Action.DISCARD_OUTPUT)
-"""Actions the admin triggers directly. Start/stop (#24) and archive (#19) are added by
-their own features, since each does more than change the state."""
+ADMIN_ACTIONS = (
+    Action.LOCK,
+    Action.UNLOCK,
+    Action.GENERATE,
+    Action.DISCARD_OUTPUT,
+    Action.START,
+    Action.STOP,
+)
+"""Actions the admin triggers directly. Archive (#19) is added by its own feature, since
+it does more than change the state."""
 
 
 class GameOut(BaseModel):
@@ -125,3 +133,26 @@ def list_generations(session: SessionDep) -> list[GenerationOut]:
         select(Generation).where(Generation.game_id == game.id).order_by(Generation.id.desc())
     )
     return [GenerationOut.model_validate(summary(session, g)) for g in generations]
+
+
+def _hosting_error(exc: hosting.HostingError) -> HTTPException:
+    return HTTPException(exc.status, detail={"code": exc.code, "message": exc.message})
+
+
+@router.post("/start")
+async def start_server(request: Request, session: SessionDep) -> GameOut:
+    """Start the live server on the generated game (Generated → Running). It reports
+    `starting` until MultiServer is up; see GET /api/server."""
+    try:
+        return game_out(await hosting.start(session, request.app.state.settings))
+    except hosting.HostingError as exc:
+        raise _hosting_error(exc) from exc
+
+
+@router.post("/stop")
+async def stop_server(request: Request, session: SessionDep) -> GameOut:
+    """Save and shut the server down (Running → Generated); Start resumes from the save."""
+    try:
+        return game_out(await hosting.stop(session, request.app.state.settings))
+    except hosting.HostingError as exc:
+        raise _hosting_error(exc) from exc

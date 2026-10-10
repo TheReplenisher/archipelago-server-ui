@@ -391,6 +391,28 @@ Decided while building it (#23):
 
 ## 5. Running the server
 
+### Start / Stop / Save, decided while building it (#24)
+
+- **The supervisor drives MultiServer through its own console** on stdin: Save sends
+  `/save`, and Stop sends `/save` then `/exit`, which MultiServer handles in order. A
+  server that hasn't exited after 30 seconds is terminated, then killed. So no
+  Archipelago connection is needed for these; the relay socket for the observer feed and
+  slot logins comes with #27 and #30.
+- **MultiServer is started with `--host 0.0.0.0`** and the game port, on the one
+  `AP_<seed>.zip` in `/data/game/output/`. The save file is written beside it, so
+  Discard output also discards the save.
+- **Before each start, the web service copies exactly the game's locked custom apworlds**
+  into `/data/game/ap/Archipelago/worlds/`, the server's custom worlds folder
+  (`XDG_DATA_HOME=/data/game/ap`). Nothing else from the library reaches the server.
+- **Server states:** stopped, starting (loading worlds and the multidata, until
+  MultiServer logs "Hosting game at"), running, stopping, crashed. A crash keeps the
+  game Running and shows MultiServer's last lines; Stop then clears it and returns to
+  Generated. MultiServer's output is kept in `/data/game/logs/server.log`.
+- **Start and Stop are game actions** (`POST /api/game/start`, `/stop`); Save is
+  `POST /api/server/save`. If the supervisor isn't answering, nothing changes and the
+  admin gets a 503.
+
+
 ### Admin console and command assistance
 
 - A free-text console still accepts any command, typed by hand.
