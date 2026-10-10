@@ -1,0 +1,5 @@
+# For the sample apworld worker/tests/apworld/loaded__apsui_test_world. On its own the
+# game is unknown; docker/compose-test.sh uploads it with that apworld picked.
+name: Knight
+game: APSUI Test World
+APSUI Test World: {}

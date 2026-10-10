@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ from apsui.uploads import (
     submit_yaml,
     summary,
 )
+from apsui.worlds import label, locks
 
 router = APIRouter(tags=["uploads"])
 
@@ -59,6 +60,17 @@ class RenameIn(BaseModel):
     names: list[NewName]
 
 
+class WorldOut(BaseModel):
+    world: str
+    """The Archipelago game name."""
+    label: str
+    """`Game · official · AP version` or `Game · custom · version · short hash`."""
+    apworld_id: int | None
+    """The library apworld, or null for the official built-in world."""
+    upload_id: int
+    """The YAML that locked it."""
+
+
 class SlotOut(BaseModel):
     name: str
     games: list[str]
@@ -70,14 +82,20 @@ def _error(exc: UploadError) -> HTTPException:
 
 
 @router.post("/uploads/yaml", status_code=202)
-async def upload_yaml(request: Request, file: UploadFile, session: SessionDep) -> UploadOut:
+async def upload_yaml(
+    request: Request,
+    file: UploadFile,
+    session: SessionDep,
+    apworld_ids: Annotated[list[int] | None, Form()] = None,
+) -> UploadOut:
     """Upload a player YAML (admin only in Alpha 1). It is checked by the worker; poll
-    GET /api/uploads for the result."""
+    GET /api/uploads for the result. `apworld_ids` picks library apworlds for the games it
+    uses; other games use their locked world, else the official one."""
     data = await file.read(MAX_YAML_BYTES + 1)
     settings: Settings = request.app.state.settings
     jobs: JobQueue = request.app.state.jobs
     try:
-        upload = submit_yaml(session, jobs, settings, file.filename or "", data)
+        upload = submit_yaml(session, jobs, settings, file.filename or "", data, apworld_ids or [])
     except UploadError as exc:
         raise _error(exc) from exc
     return UploadOut.model_validate(summary(upload))
@@ -135,3 +153,19 @@ def list_slots(session: SessionDep) -> list[SlotOut]:
     game = current_game(session)
     slots = session.scalars(select(Slot).where(Slot.game_id == game.id).order_by(Slot.id))
     return [SlotOut(name=s.name, games=s.games, upload_id=s.upload_id) for s in slots]
+
+
+@router.get("/worlds")
+def list_worlds(request: Request, session: SessionDep) -> list[WorldOut]:
+    """The world each game is locked to in the current game (DESIGN.md §4)."""
+    game = current_game(session)
+    settings: Settings = request.app.state.settings
+    return [
+        WorldOut(
+            world=lock.world,
+            label=label(settings, lock),
+            apworld_id=lock.apworld_id,
+            upload_id=lock.upload_id,
+        )
+        for lock in locks(session, game.id)
+    ]

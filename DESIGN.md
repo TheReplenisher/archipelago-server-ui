@@ -327,6 +327,26 @@ Archipelago allows one world per game in a multiworld. So:
 - **Admin override (Alpha 2):** the admin can change a game's locked version. The UI
   lists every slot whose YAML needs re-uploading for the new version.
 
+Decided while building it (#22):
+
+- **Which world a YAML is checked with,** for each game it uses: the library apworld
+  picked with the upload, else the game's locked world, else the official built-in world.
+  So once a game is locked to a custom apworld, later uploads get it without picking.
+  The worker is given exactly those apworlds and reports which games actually loaded from
+  them; a pick that didn't load is rejected (`world-not-loaded`).
+- **The lock is checked when the check finishes,** against what the file was checked
+  with, not when it is uploaded: two uploads can be checked at once, and the first to be
+  accepted locks the game. The other gets `version-locked` and *"Different game version
+  already in use — contact the server admin"*. A weighted `game:` locks every game it
+  could roll.
+- **Removing the last YAML that uses a game unlocks it.**
+- **Official worlds are labelled with the Archipelago version** (`APQuest · official ·
+  AP 0.6.8`): they ship with it, and the web service can't import them to read their own
+  version.
+- **Custom versions of built-in games can't be picked yet:** Archipelago would load the
+  built-in world instead (#77).
+- **`two-versions`:** one upload can't pick two apworlds for the same game.
+
 ### Upload logs (admin)
 
 Every upload (YAML, apworld, and later ROM) gets a log entry containing:

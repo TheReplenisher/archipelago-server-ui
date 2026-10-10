@@ -1,13 +1,28 @@
-import { Alert, Badge, Button, Card, FileButton, Group, Stack, Table, Text } from '@mantine/core'
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  FileButton,
+  Group,
+  MultiSelect,
+  Stack,
+  Table,
+  Text,
+} from '@mantine/core'
 import { IconUpload } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { FixNamesModal } from './FixNamesModal'
 import {
+  listApworlds,
   listUploads,
+  listWorlds,
   removeUpload,
   uploadYaml,
+  type Apworld,
   type Upload,
   type UploadStatus,
+  type WorldLock,
 } from '../api/client'
 
 const statusColor: Record<UploadStatus, string> = {
@@ -32,11 +47,23 @@ export function Uploads() {
   const [busy, setBusy] = useState(false)
   const [version, setVersion] = useState(0) // bump to reload the list
   const [fixing, setFixing] = useState<Upload | null>(null)
+  const [library, setLibrary] = useState<Apworld[]>([])
+  const [locks, setLocks] = useState<WorldLock[]>([])
+  const [picked, setPicked] = useState<string[]>([])
 
   useEffect(() => {
     const controller = new AbortController()
-    listUploads(controller.signal)
-      .then(setUploads)
+    Promise.all([
+      listUploads(controller.signal),
+      listApworlds(controller.signal),
+      listWorlds(controller.signal),
+    ])
+      .then(([uploads, apworlds, worlds]) => {
+        setUploads(uploads)
+        // Custom versions of built-in games can't be used yet.
+        setLibrary(apworlds.filter((a) => a.status === 'approved' && !a.replaces_builtin))
+        setLocks(worlds)
+      })
       .catch((e: unknown) => {
         if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e))
       })
@@ -77,8 +104,32 @@ export function Uploads() {
             {slotCount} {slotCount === 1 ? 'slot' : 'slots'}
           </Text>
         </Group>
+        {locks.length > 0 && (
+          <Group gap={4}>
+            <Text size="sm" c="dimmed">
+              World versions:
+            </Text>
+            {locks.map((l) => (
+              <Badge key={l.world} variant="outline" color={l.apworld_id ? 'grape' : 'gray'}>
+                {l.label}
+              </Badge>
+            ))}
+          </Group>
+        )}
+        {library.length > 0 && (
+          <MultiSelect
+            label="Custom apworlds for this YAML"
+            description="Games not picked use their locked version, else the official world"
+            placeholder="Official worlds"
+            data={library.map((a) => ({ value: String(a.id), label: a.label }))}
+            value={picked}
+            onChange={setPicked}
+            clearable
+            maw={480}
+          />
+        )}
         <FileButton
-          onChange={(file) => file && act(() => uploadYaml(file))}
+          onChange={(file) => file && act(() => uploadYaml(file, picked.map(Number)))}
           accept=".yaml,.yml,text/yaml"
         >
           {(props) => (
