@@ -3,6 +3,7 @@ import { IconAlertTriangle } from '@tabler/icons-react'
 import { Apworlds } from '../components/Apworlds'
 import { BackendStatus } from '../components/BackendStatus'
 import { CurrentGame } from '../components/CurrentGame'
+import { UploadLog } from '../components/UploadLog'
 import { Uploads } from '../components/Uploads'
 
 export function AdminPage() {
@@ -16,6 +17,7 @@ export function AdminPage() {
       <CurrentGame />
       <Uploads />
       <Apworlds />
+      <UploadLog />
       <BackendStatus />
       <Text c="dimmed">
         Generation, the console and settings will appear here as Alpha 1 is built.

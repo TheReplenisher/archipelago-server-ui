@@ -1,26 +1,15 @@
 """Library apworlds picked for YAML uploads, and per-game version locking (DESIGN.md §4).
 The worker's results are written straight into done/, as in test_uploads."""
 
-import os
 from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from apsui_worker.protocol import (
-    INPUT_DIR,
-    RESULT_FILE,
-    SPEC_FILE,
-    JobResult,
-    State,
-    now,
-    read_json_file,
-    write_json_atomic,
-)
 from apworld_files import MANIFEST, make_apworld
 from fastapi.testclient import TestClient
+from worker_sim import worker_finishes
 
 from apsui.config import Settings
-from apsui.jobs import JobQueue
 from apsui.main import create_app
 from apsui.worlds import LOCKED_MESSAGE
 
@@ -34,32 +23,6 @@ def client(settings: Settings) -> Iterator[TestClient]:
     settings.archipelago_version = "0.6.8"
     with TestClient(create_app(settings)) as c:
         yield c
-
-
-def worker_finishes(client: TestClient, outputs: dict[str, Any]) -> list[dict[str, Any]]:
-    """Play the worker for every queued job, answering by job type, then collect. Returns
-    the specs, each with the names of its input files."""
-    jobs: JobQueue = client.app.state.jobs  # type: ignore[attr-defined]
-    specs = []
-    for job_id in jobs.dirs.ids(State.QUEUE):
-        done = jobs.dirs.path(State.DONE, job_id)
-        os.rename(jobs.dirs.path(State.QUEUE, job_id), done)
-        spec = read_json_file(done / SPEC_FILE)
-        spec["inputs"] = sorted(p.name for p in (done / INPUT_DIR).iterdir())
-        specs.append(spec)
-        output = outputs[spec["type"]]
-        result = JobResult(
-            id=job_id,
-            type=spec["type"],
-            status="ok",
-            started_at=now(),
-            finished_at=now(),
-            output=output(spec) if callable(output) else output,
-        )
-        write_json_atomic(done / RESULT_FILE, result.to_json())
-    with client.app.state.sessionmaker() as session:  # type: ignore[attr-defined]
-        jobs.collect(session)
-    return specs
 
 
 def checked(game: str = "Sample Game", custom: bool = True, name: str = "Knight") -> dict[str, Any]:
