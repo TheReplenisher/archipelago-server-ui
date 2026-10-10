@@ -16,6 +16,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import shutil
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,15 @@ from apsui.config import Settings
 from apsui.jobs import JobQueue
 from apsui.lifecycle import GameState, current_game
 from apsui.models import Game, Job, Slot, Upload
+from apsui.worlds import (
+    LOCKED_MESSAGE,
+    WorldError,
+    choose,
+    conflict,
+    job_inputs,
+    lock,
+    release_unused,
+)
 from apsui.yaml_names import InvalidName, check_new_name, set_names
 
 log = logging.getLogger(__name__)
@@ -66,6 +76,7 @@ class CheckedDocument(BaseModel):
 class YamlCheck(BaseModel):
     error: CheckError | None
     documents: list[CheckedDocument]
+    custom_games: list[str] = []
 
 
 def pending_path(settings: Settings, upload: Upload) -> Path:
@@ -77,8 +88,15 @@ def accepted_path(settings: Settings, upload: Upload) -> Path:
 
 
 def submit_yaml(
-    session: Session, jobs: JobQueue, settings: Settings, filename: str, data: bytes
+    session: Session,
+    jobs: JobQueue,
+    settings: Settings,
+    filename: str,
+    data: bytes,
+    apworld_ids: Sequence[int] = (),
 ) -> Upload:
+    """Store the file and have the worker check it, with the library apworlds picked for
+    it and the locked custom world of every other game."""
     game = current_game(session)
     if game.state != GameState.OPEN:
         raise UploadError("uploads-closed", "Uploads are closed for this game", 409)
@@ -86,6 +104,10 @@ def submit_yaml(
         raise UploadError("too-large", "YAML file is too large", 413)
     if not data.strip():
         raise UploadError("empty", "The file is empty")
+    try:
+        chosen = choose(session, game.id, apworld_ids)
+    except WorldError as exc:
+        raise UploadError(exc.code, exc.message) from exc
 
     upload = Upload(
         game_id=game.id,
@@ -94,6 +116,7 @@ def submit_yaml(
         sha256=hashlib.sha256(data).hexdigest(),
         size=len(data),
         status="pending",
+        worlds={game_name: apworld.id for game_name, apworld in chosen.items()},
         uploaded_at=datetime.now(UTC),
     )
     session.add(upload)
@@ -102,14 +125,16 @@ def submit_yaml(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     session.commit()
-    _check(session, jobs, upload, data)
+    _check(session, jobs, settings, upload, data)
     return upload
 
 
-def _check(session: Session, jobs: JobQueue, upload: Upload, data: bytes) -> None:
-    job = jobs.submit(
-        session, "validate-yaml", params=VALIDATE_PARAMS, inputs={"upload.yaml": data}
-    )
+def _check(
+    session: Session, jobs: JobQueue, settings: Settings, upload: Upload, data: bytes
+) -> None:
+    inputs: dict[str, bytes | Path] = {"upload.yaml": data}
+    inputs |= job_inputs(session, settings, upload)
+    job = jobs.submit(session, "validate-yaml", params=VALIDATE_PARAMS, inputs=inputs)
     upload.job_id = job.id
     session.commit()
 
@@ -152,6 +177,14 @@ def _finish(session: Session, upload: Upload, job: Job, settings: Settings) -> N
     for document in documents:
         if document.error:  # renaming can't fix these
             return reject(document.error.code, document.error.message)
+    games = {game for d in documents for game in d.games}
+    not_loaded = sorted(
+        g for g in games if g in (upload.worlds or {}) and g not in check.custom_games
+    )
+    if not_loaded:
+        return reject("world-not-loaded", f"The custom apworld for {not_loaded[0]} didn't load")
+    if conflict(session, upload, games):
+        return reject("version-locked", LOCKED_MESSAGE)
     quantity = sum(d.quantity for d in documents)
     if slot_count(session, upload.game_id) + quantity > settings.max_slots:
         return reject("too-many-slots", f"This would go over the {settings.max_slots}-slot limit")
@@ -176,6 +209,7 @@ def _finish(session: Session, upload: Upload, job: Job, settings: Settings) -> N
                 games=document.games,
             )
         )
+    lock(session, upload, games)
     upload.status = "accepted"
 
 
@@ -292,7 +326,7 @@ def rename(
     upload.status, upload.checked_at = "pending", None
     upload.sha256, upload.size = hashlib.sha256(edited).hexdigest(), len(edited)
     session.commit()
-    _check(session, jobs, upload, edited)
+    _check(session, jobs, settings, upload, edited)
     return upload
 
 
@@ -319,6 +353,7 @@ def remove_upload(session: Session, settings: Settings, upload_id: int) -> Uploa
         accepted_path(settings, upload).unlink(missing_ok=True)
         upload.slots.clear()
         upload.status = "removed"
+        release_unused(session, upload.game_id)
         session.commit()
     return upload
 

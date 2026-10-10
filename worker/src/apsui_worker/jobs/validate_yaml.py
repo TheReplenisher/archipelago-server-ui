@@ -11,15 +11,18 @@ full multiworld must not be rejected here.
 Checks across files (unique names, the slot limit) need the rest of the game, so the web
 service does them.
 
+Input: upload.yaml, plus any library apworlds chosen for it (<module>.apworld).
 Params: plando_options (str, default AP's "bosses, connections, texts"),
         allow_quantity (bool, default false), rolls (int, default 5).
-Output: {"error": <file-level error or null>, "documents": [<per document>]}
+Output: {"error": <file-level error or null>, "documents": [<per document>],
+         "custom_games": [games whose world came from a supplied apworld]}
 """
 
 from __future__ import annotations
 
 import copy
 import random
+import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -40,14 +43,24 @@ class DocumentError(Exception):
 
 
 def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
+    from apsui_worker.archipelago import custom_worlds_dir
+
+    yaml_file = ctx.input_dir / "upload.yaml"
+    if not yaml_file.is_file():
+        from apsui_worker.jobs import JobFailure
+
+        raise JobFailure("bad-input", "Expected upload.yaml")
+    # Library apworlds chosen for this upload become this job's custom worlds, before
+    # anything imports worlds.
+    custom = custom_worlds_dir()
+    supplied = []
+    for apworld in sorted(ctx.input_dir.glob("*.apworld")):
+        shutil.copy2(apworld, custom / apworld.name)
+        supplied.append(str(custom / apworld.name))
+
     import Utils
     from BaseClasses import PlandoOptions
 
-    files = sorted(p for p in ctx.input_dir.iterdir() if p.is_file())
-    if len(files) != 1:
-        from apsui_worker.jobs import JobFailure
-
-        raise JobFailure("bad-input", "Expected exactly one YAML file")
     plando = PlandoOptions.from_option_string(
         str(params.get("plando_options", "bosses, connections, texts"))
     )
@@ -55,7 +68,7 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
     rolls = max(1, min(int(params.get("rolls", 5)), 50))
 
     try:
-        documents = list(Utils.parse_yamls(_read_text(files[0])))
+        documents = list(Utils.parse_yamls(_read_text(yaml_file)))
     except Exception as exc:  # malformed YAML, duplicate keys, bad encoding
         return {
             "error": DocumentError(
@@ -79,7 +92,19 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
             "error": DocumentError("yaml-empty", "File has no player settings").as_dict(),
             "documents": results,
         }
-    return {"error": None, "documents": results}
+    return {"error": None, "documents": results, "custom_games": custom_games(supplied)}
+
+
+def custom_games(supplied: list[str]) -> list[str]:
+    """The games whose world came from one of the supplied apworlds. Archipelago skips an
+    apworld whose game is already loaded, so the web service checks its choice was used."""
+    from worlds.AutoWorld import AutoWorldRegister
+
+    return sorted(
+        game
+        for game, cls in AutoWorldRegister.world_types.items()
+        if any(path in str(getattr(cls, "__file__", "") or "") for path in supplied)
+    )
 
 
 def _read_text(path: Path) -> str:

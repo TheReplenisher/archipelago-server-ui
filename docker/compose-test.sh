@@ -109,6 +109,15 @@ import pathlib
 assert pathlib.Path("/data/library/apworlds/$sha.apworld").is_file()
 PY
 rm -rf "$apworlds"
+
+echo "--- a YAML picks the approved apworld; real AP checks it with it, and the game locks"
+curl -fsS -F "file=@$here/worker/tests/yaml/game-unknown__custom-world.yaml" \
+    -F "apworld_ids=$id" "$base/uploads/yaml" >/dev/null
+wait_checked
+curl -fsS "$base/uploads" | grep -q '"filename":"game-unknown__custom-world.yaml","status":"accepted"' \
+    || { echo "custom-world YAML not accepted: $(curl -fsS "$base/uploads")"; exit 1; }
+curl -fsS "$base/worlds" | grep -q "\"world\":\"APSUI Test World\",\"label\":\"APSUI Test World · custom · v1.0.0 · ${sha%"${sha#??????}"}\"" \
+    || { echo "world not locked: $(curl -fsS "$base/worlds")"; exit 1; }
 echo "apworlds: ok"
 
 # Checks run inside every service.
