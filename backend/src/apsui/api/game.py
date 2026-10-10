@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from apsui.db import get_session
 from apsui.lifecycle import Action, GameState, TransitionError, allowed_actions, apply, current_game
 from apsui.models import Game
+from apsui.uploads import unsettled_count
 
 router = APIRouter(prefix="/game", tags=["game"])
 
@@ -53,7 +54,11 @@ def _admin_action(session: Session, action: Action) -> GameOut:
 
 @router.post("/lock")
 def lock(session: SessionDep) -> GameOut:
-    """Freeze uploads so the admin can review them before generating."""
+    """Freeze uploads so the admin can review them before generating. Refused while a
+    file is still being checked or waiting for a name, so what gets generated is settled."""
+    if unsettled_count(session, current_game(session).id):
+        message = "Some uploads are still being checked or need a name"
+        raise HTTPException(409, detail={"code": "uploads-pending", "message": message})
     return _admin_action(session, Action.LOCK)
 
 

@@ -101,6 +101,9 @@ Recorded so they aren't lost, not committed to a release.
 
 ### Games, generation and files
 
+- **YAML templates and a web YAML editor (#76).** Generate a template for any loadable
+  game, custom apworlds included, and create or edit a YAML in the browser, saved through
+  the same checks as an upload. Manual uploads stay.
 - **ROM uploads.** Users upload; the admin must approve, with no auto-approve. ROMs are
   never served back to users.
 - **Generation presets:** saved sets of generation options, for example race mode or

@@ -12,6 +12,8 @@ dependencies = [
     "apsui-worker",
     "fastapi>=0.120",
     "pydantic-settings>=2.10",
+    "python-multipart>=0.0.32",
+    "pyyaml>=6.0.3",
     "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.35",
 ]
@@ -29,6 +31,7 @@ dev = [
     "mypy>=1.17",
     "pytest>=8.4",
     "ruff>=0.13",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [build-system]

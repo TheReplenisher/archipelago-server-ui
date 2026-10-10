@@ -1,0 +1,7 @@
+# Weighted names can't be logged in to; the admin is asked for one fixed name instead.
+name:
+  Alice: 1
+  Bob: 1
+game: APQuest
+APQuest:
+  hard_mode: true

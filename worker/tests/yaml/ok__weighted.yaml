@@ -1,0 +1,11 @@
+name: Quester
+game: APQuest
+APQuest:
+  hard_mode:
+    true: 1
+    false: 3
+  trap_chance:
+    random-low: 1
+    40: 1
+  player_sprite: kitty
+  not_an_option: 1

@@ -17,6 +17,14 @@ FROM python:${PYTHON_VERSION}-trixie AS build
 COPY --from=ghcr.io/astral-sh/uv:0.12.23 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 
+# Archipelago first: the slowest layer and the one that changes least, so it stays cached
+ARG AP_VERSION
+ADD --keep-git-dir=false https://github.com/ArchipelagoMW/Archipelago.git#${AP_VERSION} /opt/archipelago
+COPY docker/install-archipelago.sh /usr/local/bin/
+RUN uv venv /opt/archipelago-venv --python /usr/local/bin/python3 \
+ && install-archipelago.sh /opt/archipelago /opt/archipelago-venv/bin/python \
+ && /opt/archipelago-venv/bin/python -m compileall -q /opt/archipelago
+
 # web service (it uses the worker and server packages only for their protocols)
 COPY worker/ /src/worker/
 COPY server/ /src/server/
@@ -25,14 +33,6 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN UV_PROJECT_ENVIRONMENT=/opt/apsui/venv uv sync --locked --no-dev --no-editable --no-install-project
 COPY backend/ ./
 RUN UV_PROJECT_ENVIRONMENT=/opt/apsui/venv uv sync --locked --no-dev --no-editable
-
-# Archipelago
-ARG AP_VERSION
-ADD --keep-git-dir=false https://github.com/ArchipelagoMW/Archipelago.git#${AP_VERSION} /opt/archipelago
-COPY docker/install-archipelago.sh /usr/local/bin/
-RUN uv venv /opt/archipelago-venv --python /usr/local/bin/python3 \
- && install-archipelago.sh /opt/archipelago /opt/archipelago-venv/bin/python \
- && /opt/archipelago-venv/bin/python -m compileall -q /opt/archipelago
 
 # worker and server services: standard library only, run with Archipelago's environment
 RUN uv pip install --python /opt/archipelago-venv/bin/python --no-deps /src/worker /src/server

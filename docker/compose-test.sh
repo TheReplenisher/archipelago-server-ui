@@ -51,6 +51,37 @@ assert job is not None and job.status == "ok", (job.status if job else None, job
 print("ping job: ok")
 PY
 
+echo "--- YAML uploads: web -> worker (real Archipelago) -> slots"
+base="http://127.0.0.1:$APSUI_WEB_PORT/api"
+wait_checked() {
+    for _ in $(seq 60); do
+        curl -fsS "$base/uploads" | grep -q '"status":"pending"' || return 0
+        sleep 1
+    done
+    echo "uploads still pending"; exit 1
+}
+for sample in ok__weighted option-invalid__bad-choice name-not-fixed__weighted-name; do
+    curl -fsS -F "file=@$here/worker/tests/yaml/$sample.yaml" "$base/uploads/yaml" >/dev/null
+done
+wait_checked
+uploads=$(curl -fsS "$base/uploads")
+echo "$uploads" | grep -q '"filename":"ok__weighted.yaml","status":"accepted"' \
+    || { echo "weighted YAML not accepted: $uploads"; exit 1; }
+echo "$uploads" | grep -q '"error_code":"option-invalid"' \
+    || { echo "bad option not rejected: $uploads"; exit 1; }
+echo "$uploads" | grep -q '"status":"needs-name"' \
+    || { echo "weighted name not waiting for a name: $uploads"; exit 1; }
+
+echo "--- rename a weighted name on the spot; the edited YAML is checked again by real AP"
+waiting=$(echo "$uploads" | python3 -c 'import json,sys; print(next(u["id"] for u in json.load(sys.stdin) if u["status"] == "needs-name"))')
+curl -fsS -H 'Content-Type: application/json' -d '{"names":[{"document":0,"name":"Alice"}]}' \
+    "$base/uploads/$waiting/rename" >/dev/null
+wait_checked
+slots=$(curl -fsS "$base/slots")
+echo "$slots" | grep -q '"name":"Quester"' && echo "$slots" | grep -q '"name":"Alice"' \
+    || { echo "slots after rename: $slots"; exit 1; }
+echo "uploads: ok"
+
 # Checks run inside every service.
 common_checks='
 import os, sys

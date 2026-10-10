@@ -45,6 +45,7 @@ MAX_RESULT_BYTES = 1_000_000
 DEFAULT_TIMEOUTS: dict[str, float] = {
     "ping": 60,
     "list-worlds": 300,
+    "validate-yaml": 120,
 }
 """Seconds. The worker also caps every job at its own maximum."""
 
