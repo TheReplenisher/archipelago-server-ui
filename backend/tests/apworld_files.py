@@ -5,6 +5,8 @@ import json
 import zipfile
 from typing import Any
 
+FIXED_TIME = (2026, 1, 1, 0, 0, 0)
+
 MANIFEST: dict[str, Any] = {
     "game": "Sample Game",
     "world_version": "1.2.0",
@@ -32,5 +34,6 @@ def make_apworld(
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zf:
         for name, data in files.items():
-            zf.writestr(name, data)
+            # A fixed timestamp, so the same arguments always give the same bytes.
+            zf.writestr(zipfile.ZipInfo(name, date_time=FIXED_TIME), data)
     return buffer.getvalue()
