@@ -1,0 +1,8 @@
+{
+  "game": "APSUI Broken",
+  "world_version": "1.0.0",
+  "minimum_ap_version": "0.6.0",
+  "authors": ["Archipelago Server UI tests"],
+  "compatible_version": 7,
+  "version": 7
+}

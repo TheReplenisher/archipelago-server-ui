@@ -82,6 +82,35 @@ echo "$slots" | grep -q '"name":"Quester"' && echo "$slots" | grep -q '"name":"A
     || { echo "slots after rename: $slots"; exit 1; }
 echo "uploads: ok"
 
+echo "--- apworlds: inspected by web, import-tested by the worker (real AP), approved"
+apworlds=$(mktemp -d)
+for sample in "$here"/worker/tests/apworld/*/; do
+    module=$(basename "$sample" | sed 's/.*__//')
+    (cd "$sample" && mkdir -p "$apworlds/src/$module" && cp ./* "$apworlds/src/$module/")
+    (cd "$apworlds/src" && python3 -m zipfile -c "$apworlds/$module.apworld" "$module")
+    curl -fsS -F "file=@$apworlds/$module.apworld" "$base/apworlds" >/dev/null
+done
+for _ in $(seq 60); do
+    curl -fsS "$base/apworlds" | grep -q '"status":"checking"' || break
+    sleep 1
+done
+listing=$(curl -fsS "$base/apworlds")
+status_of() { echo "$listing" | python3 -c 'import json,sys; print(next(a["status"] + ":" + str(a["replaces_builtin"]) for a in json.load(sys.stdin) if a["filename"] == sys.argv[1]))' "$1"; }
+[ "$(status_of apsui_test_world.apworld)" = "pending:None" ] || { echo "test world: $listing"; exit 1; }
+[ "$(status_of apquest.apworld)" = "pending:2.0.0" ] || { echo "apquest: $listing"; exit 1; }
+[ "$(status_of apsui_broken.apworld)" = "rejected:None" ] || { echo "broken: $listing"; exit 1; }
+[ "$(status_of apsui_mismatch.apworld)" = "rejected:None" ] || { echo "mismatch: $listing"; exit 1; }
+id=$(echo "$listing" | python3 -c 'import json,sys; print(next(a["id"] for a in json.load(sys.stdin) if a["filename"] == "apsui_test_world.apworld"))')
+curl -fsS -X POST "$base/apworlds/$id/approve" | grep -q '"status":"approved"' \
+    || { echo "approve failed"; exit 1; }
+sha=$(curl -fsS "$base/apworlds/$id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])')
+py web <<PY || { echo "approved apworld not in the library"; exit 1; }
+import pathlib
+assert pathlib.Path("/data/library/apworlds/$sha.apworld").is_file()
+PY
+rm -rf "$apworlds"
+echo "apworlds: ok"
+
 # Checks run inside every service.
 common_checks='
 import os, sys

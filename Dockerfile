@@ -62,6 +62,7 @@ ENV PATH=/opt/apsui/venv/bin:$PATH \
     APSUI_STATIC_DIR=/opt/apsui/static \
     APSUI_ARCHIPELAGO_DIR=/opt/archipelago \
     ARCHIPELAGO_VERSION=${AP_VERSION} \
+    APSUI_ARCHIPELAGO_VERSION=${AP_VERSION} \
     SKIP_REQUIREMENTS_UPDATE=1
 
 USER apsui

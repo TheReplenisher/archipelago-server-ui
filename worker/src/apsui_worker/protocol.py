@@ -46,6 +46,7 @@ DEFAULT_TIMEOUTS: dict[str, float] = {
     "ping": 60,
     "list-worlds": 300,
     "validate-yaml": 120,
+    "test-apworld": 300,
 }
 """Seconds. The worker also caps every job at its own maximum."""
 
