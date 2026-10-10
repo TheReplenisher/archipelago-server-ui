@@ -46,7 +46,8 @@ def accept_yaml(
 def output_zip() -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zf:
-        zf.writestr("AP_12345.archipelago", b"multidata")
+        # A fixed timestamp, so every call gives the same bytes.
+        zf.writestr(zipfile.ZipInfo("AP_12345.archipelago", (2026, 1, 1, 0, 0, 0)), b"multidata")
     return buffer.getvalue()
 
 
