@@ -88,11 +88,23 @@ export interface Upload {
 
 export const listUploads = (signal?: AbortSignal) => getJson<Upload[]>('/uploads', { signal })
 
-export function uploadYaml(file: File) {
+/** `apworldIds` picks library apworlds for the games the YAML uses. */
+export function uploadYaml(file: File, apworldIds: number[] = []) {
   const form = new FormData()
   form.append('file', file)
+  for (const id of apworldIds) form.append('apworld_ids', String(id))
   return postJson<Upload>('/uploads/yaml', form)
 }
+
+/** The world a game is locked to in the current game. */
+export interface WorldLock {
+  world: string
+  label: string
+  apworld_id: number | null
+  upload_id: number
+}
+
+export const listWorlds = (signal?: AbortSignal) => getJson<WorldLock[]>('/worlds', { signal })
 
 export const removeUpload = (id: number) => getJson<Upload>(`/uploads/${id}`, { method: 'DELETE' })
 

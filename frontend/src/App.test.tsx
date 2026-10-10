@@ -17,6 +17,7 @@ function stubHealth(health: () => Promise<Response>) {
     const url = String(input)
     if (url === '/api/game') return Promise.resolve(Response.json(openGame))
     if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
+    if (url === '/api/worlds') return Promise.resolve(Response.json([]))
     if (url === '/api/uploads') return Promise.resolve(Response.json([]))
     return health()
   })
@@ -79,6 +80,7 @@ describe('current game', () => {
         return Promise.resolve(Response.json({ ...openGame, state: 'locked', actions: ['unlock'] }))
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/worlds') return Promise.resolve(Response.json([]))
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
       return okHealth()
     })
@@ -107,6 +109,7 @@ describe('current game', () => {
           )
         if (url === '/api/game') return Promise.resolve(Response.json(openGame))
         if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
+        if (url === '/api/worlds') return Promise.resolve(Response.json([]))
         if (url === '/api/uploads') return Promise.resolve(Response.json([]))
         return okHealth()
       }),
@@ -149,6 +152,7 @@ describe('uploads', () => {
       }
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/worlds') return Promise.resolve(Response.json([]))
       return okHealth()
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -185,6 +189,7 @@ describe('uploads', () => {
           )
         if (url === '/api/game') return Promise.resolve(Response.json(openGame))
         if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
+        if (url === '/api/worlds') return Promise.resolve(Response.json([]))
         return okHealth()
       }),
     )
@@ -223,6 +228,7 @@ describe('fixing slot names', () => {
       if (url === '/api/uploads') return Promise.resolve(Response.json([waiting]))
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/worlds') return Promise.resolve(Response.json([]))
       return okHealth()
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -322,6 +328,7 @@ describe('apworld approval', () => {
         return Promise.resolve(Response.json({ ...pending, status: 'approved' }))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([pending]))
       if (url === '/api/apworlds/7') return Promise.resolve(Response.json(detail))
+      if (url === '/api/worlds') return Promise.resolve(Response.json([]))
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       return okHealth()
@@ -346,5 +353,68 @@ describe('apworld approval', () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/apworlds/7/approve', expect.anything()),
     )
+  })
+})
+
+describe('custom apworlds for a YAML', () => {
+  const approved = {
+    id: 4,
+    filename: 'sample_game.apworld',
+    label: 'Sample Game · custom · v1.0.0 · abc123',
+    game: 'Sample Game',
+    world_version: '1.0.0',
+    sha256: 'abc123' + '0'.repeat(58),
+    short_hash: 'abc123',
+    size: 1024,
+    status: 'approved',
+    replaces_builtin: null,
+    error_code: null,
+    error_message: null,
+    uploaded_by: 'admin',
+    uploaded_at: '2026-10-10T00:00:00Z',
+    checked_at: '2026-10-10T00:00:01Z',
+    decided_at: '2026-10-10T00:00:02Z',
+  }
+
+  it('shows locked versions and sends the picked apworlds with the upload', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (init?.method === 'POST') return Promise.resolve(Response.json({}, { status: 202 }))
+      if (url === '/api/apworlds') return Promise.resolve(Response.json([approved]))
+      if (url === '/api/worlds')
+        return Promise.resolve(
+          Response.json([
+            {
+              world: 'APQuest',
+              label: 'APQuest · official · AP 0.6.8',
+              apworld_id: null,
+              upload_id: 1,
+            },
+          ]),
+        )
+      if (url === '/api/uploads') return Promise.resolve(Response.json([]))
+      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    expect(await screen.findByText('APQuest · official · AP 0.6.8')).toBeInTheDocument()
+    await userEvent.click(screen.getByPlaceholderText('Official worlds'))
+    await userEvent.click(
+      await screen.findByRole('option', {
+        name: 'Sample Game · custom · v1.0.0 · abc123',
+        hidden: true,
+      }),
+    )
+
+    const file = new File(['name: Knight\n'], 'knight.yaml', { type: 'text/yaml' })
+    const input = document.querySelector<HTMLInputElement>('input[type=file][accept*=".yaml"]')!
+    await userEvent.upload(input, file)
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/uploads/yaml', expect.anything()),
+    )
+    const [, init] = fetchMock.mock.calls.find(([u]) => String(u) === '/api/uploads/yaml')!
+    expect((init!.body as FormData).getAll('apworld_ids')).toEqual(['4'])
   })
 })
