@@ -2,12 +2,15 @@ import { Alert, Badge, Button, Card, Code, Group, Stack, Text } from '@mantine/c
 import { useEffect, useState } from 'react'
 import {
   getGame,
+  getServer,
   listGenerations,
   runGameAction,
+  saveServer,
   type Game,
   type GameAction,
   type GameState,
   type Generation,
+  type ServerStatus,
 } from '../api/client'
 
 const stateInfo: Record<GameState, { label: string; color: string; help: string }> = {
@@ -32,6 +35,33 @@ const actionLabels: Record<GameAction, string> = {
   unlock: 'Unlock uploads',
   generate: 'Generate',
   'discard-output': 'Discard output',
+  start: 'Start server',
+  stop: 'Stop server',
+}
+
+/** What MultiServer is doing, while the game is Running. */
+function ServerLine({ server }: { server: ServerStatus }) {
+  if (!server.reachable)
+    return (
+      <Text size="sm" c="red">
+        The server service isn't answering.
+      </Text>
+    )
+  if (server.state === 'crashed')
+    return (
+      <Alert color="red" title={`The server stopped unexpectedly (exit code ${server.exit_code})`}>
+        <Code block mah={200} style={{ overflow: 'auto' }}>
+          {server.log_tail.join('\n')}
+        </Code>
+      </Alert>
+    )
+  return (
+    <Text size="sm">
+      Server {server.state}
+      {server.state === 'running' && server.port ? ` on port ${server.port}` : ''}
+      {server.multidata ? ` (${server.multidata})` : ''}
+    </Text>
+  )
 }
 
 const POLL_MS = 2000
@@ -76,14 +106,16 @@ export function CurrentGame() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [generations, setGenerations] = useState<Generation[]>([])
+  const [server, setServer] = useState<ServerStatus | null>(null)
   const [version, setVersion] = useState(0) // bump to reload
 
   useEffect(() => {
     const controller = new AbortController()
     Promise.all([getGame(controller.signal), listGenerations(controller.signal)])
-      .then(([game, generations]) => {
+      .then(async ([game, generations]) => {
         setGame(game)
         setGenerations(generations)
+        setServer(game.state === 'running' ? await getServer(controller.signal) : null)
       })
       .catch((e: unknown) => {
         if (!controller.signal.aborted) setError(e instanceof Error ? e.message : String(e))
@@ -91,13 +123,26 @@ export function CurrentGame() {
     return () => controller.abort()
   }, [version])
 
-  // While generating, poll until the worker is done.
-  const generating = game?.state === 'generating'
+  // While generating, or while the server comes up or goes down, poll until it settles.
+  const settling =
+    game?.state === 'generating' || server?.state === 'starting' || server?.state === 'stopping'
   useEffect(() => {
-    if (!generating) return
+    if (!settling) return
     const timer = setInterval(() => setVersion((v) => v + 1), POLL_MS)
     return () => clearInterval(timer)
-  }, [generating])
+  }, [settling])
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await saveServer()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const run = async (action: GameAction) => {
     setBusy(true)
@@ -130,7 +175,11 @@ export function CurrentGame() {
             {error}
           </Alert>
         )}
-        {generations[0] && <LatestGeneration generation={generations[0]} />}
+        {server ? (
+          <ServerLine server={server} />
+        ) : (
+          generations[0] && <LatestGeneration generation={generations[0]} />
+        )}
         {game && game.actions.length > 0 && (
           <Group>
             {game.actions.map((action) => (
@@ -138,6 +187,11 @@ export function CurrentGame() {
                 {actionLabels[action]}
               </Button>
             ))}
+            {server?.state === 'running' && (
+              <Button variant="subtle" loading={busy} onClick={save}>
+                Save
+              </Button>
+            )}
           </Group>
         )}
       </Stack>

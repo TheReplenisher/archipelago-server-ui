@@ -49,7 +49,7 @@ export interface Health {
 export const getHealth = (signal?: AbortSignal) => getJson<Health>('/health', { signal })
 
 export type GameState = 'open' | 'locked' | 'generating' | 'generated' | 'running' | 'archived'
-export type GameAction = 'lock' | 'unlock' | 'generate' | 'discard-output'
+export type GameAction = 'lock' | 'unlock' | 'generate' | 'discard-output' | 'start' | 'stop'
 
 export interface Game {
   id: number
@@ -233,3 +233,20 @@ export interface Generation {
 
 export const listGenerations = (signal?: AbortSignal) =>
   getJson<Generation[]>('/game/generations', { signal })
+
+export type ServerState = 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed'
+
+export interface ServerStatus {
+  reachable: boolean
+  state: ServerState | null
+  archipelago_version: string | null
+  multidata: string | null
+  port: number | null
+  started_at: string | null
+  exit_code: number | null
+  /** MultiServer's last lines, when it crashed. */
+  log_tail: string[]
+}
+
+export const getServer = (signal?: AbortSignal) => getJson<ServerStatus>('/server', { signal })
+export const saveServer = () => postJson<ServerStatus>('/server/save')

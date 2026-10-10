@@ -11,9 +11,15 @@ from apsui_server.protocol import MAX_MESSAGE_BYTES, ControlError, decode, encod
 TIMEOUT = 5.0
 
 
-async def request(socket_path: Path, message: dict[str, Any]) -> dict[str, Any]:
+STOP_TIMEOUT = 60.0
+"""Stop waits for MultiServer to save and exit (the supervisor allows it 30s, then 10s)."""
+
+
+async def request(
+    socket_path: Path, message: dict[str, Any], seconds: float = TIMEOUT
+) -> dict[str, Any]:
     try:
-        async with asyncio.timeout(TIMEOUT):
+        async with asyncio.timeout(seconds):
             reader, writer = await asyncio.open_unix_connection(
                 str(socket_path), limit=MAX_MESSAGE_BYTES
             )
