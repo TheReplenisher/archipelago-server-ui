@@ -44,7 +44,7 @@ mypy_path = "src"
 
 [[tool.mypy.overrides]]
 # Archipelago is imported inside job handlers, at runtime, from AP's source tree.
-module = ["BaseClasses", "Generate", "Utils", "worlds", "worlds.*"]
+module = ["BaseClasses", "Generate", "Main", "Utils", "worlds", "worlds.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

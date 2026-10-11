@@ -49,7 +49,7 @@ export interface Health {
 export const getHealth = (signal?: AbortSignal) => getJson<Health>('/health', { signal })
 
 export type GameState = 'open' | 'locked' | 'generating' | 'generated' | 'running' | 'archived'
-export type GameAction = 'lock' | 'unlock'
+export type GameAction = 'lock' | 'unlock' | 'generate' | 'discard-output'
 
 export interface Game {
   id: number
@@ -60,7 +60,8 @@ export interface Game {
 }
 
 export const getGame = (signal?: AbortSignal) => getJson<Game>('/game', { signal })
-export const runGameAction = (action: GameAction) => postJson<Game>(`/game/${action}`)
+/** Generate answers with the new generation run; the others with the game. */
+export const runGameAction = (action: GameAction) => postJson<unknown>(`/game/${action}`)
 
 export type UploadStatus = 'pending' | 'needs-name' | 'accepted' | 'rejected' | 'removed'
 
@@ -213,3 +214,22 @@ export const listUploadLog = (signal?: AbortSignal) =>
 
 export const getUploadLog = (kind: UploadKind, id: number, signal?: AbortSignal) =>
   getJson<LogDetail>(`/logs/uploads/${kind}/${id}`, { signal })
+
+export interface Generation {
+  id: number
+  status: 'running' | 'ok' | 'failed'
+  started_at: string
+  finished_at: string | null
+  seed_name: string | null
+  output_file: string | null
+  players: string[]
+  error_code: string | null
+  error_message: string | null
+  /** The uploads Archipelago's error points at, where it names one. */
+  culprits: { upload_id: number; filename: string; slots: string[] }[]
+  traceback: string | null
+  log_tail: string | null
+}
+
+export const listGenerations = (signal?: AbortSignal) =>
+  getJson<Generation[]>('/game/generations', { signal })

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from apsui_worker.jobs import list_worlds, ping, test_apworld, validate_yaml
+from apsui_worker.jobs import generate, list_worlds, ping, test_apworld, validate_yaml
 
 
 @dataclass(frozen=True)
@@ -39,4 +39,5 @@ HANDLERS: dict[str, Handler] = {
     "list-worlds": list_worlds.run,
     "validate-yaml": validate_yaml.run,
     "test-apworld": test_apworld.run,
+    "generate": generate.run,
 }

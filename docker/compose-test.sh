@@ -133,6 +133,28 @@ assert entry["job"]["type"] == "validate-yaml" and len(entry["sha256"]) == 64, e
     || { echo "upload log is missing entries"; exit 1; }
 echo "upload log: ok"
 
+echo "--- generation: lock, then real AP generates; the server service sees the output"
+custom=$(curl -fsS "$base/uploads" | python3 -c 'import json,sys; print(next(u["id"] for u in json.load(sys.stdin) if u["filename"] == "game-unknown__custom-world.yaml"))')
+curl -fsS -X DELETE "$base/uploads/$custom" >/dev/null  # the sample world is a stub
+curl -fsS -X POST "$base/game/lock" | grep -q '"state":"locked"' || { echo "lock failed"; exit 1; }
+curl -fsS -X POST "$base/game/generate" >/dev/null
+for _ in $(seq 180); do
+    curl -fsS "$base/game" | grep -q '"state":"generating"' || break
+    sleep 1
+done
+curl -fsS "$base/game" | grep -q '"state":"generated"' \
+    || { echo "not generated: $(curl -fsS "$base/game/generations")"; exit 1; }
+zip=$(curl -fsS "$base/game/generations" | python3 -c '
+import json, sys
+g = json.load(sys.stdin)[0]
+assert sorted(g["players"]) == ["Alice", "Quester"], g
+print(g["output_file"])')
+py server <<PY || { echo "server can't see the output"; exit 1; }
+import zipfile
+assert zipfile.is_zipfile("/data/game/output/$zip")
+PY
+echo "generation: ok ($zip)"
+
 # Checks run inside every service.
 common_checks='
 import os, sys

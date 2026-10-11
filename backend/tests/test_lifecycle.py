@@ -126,7 +126,7 @@ def test_api_shows_and_moves_the_current_game(client: TestClient) -> None:
     assert (game["state"], game["actions"]) == ("open", ["lock"])
 
     locked = client.post("/api/game/lock").json()
-    assert (locked["state"], locked["actions"]) == ("locked", ["unlock"])
+    assert (locked["state"], locked["actions"]) == ("locked", ["unlock", "generate"])
 
     refused = client.post("/api/game/lock")
     assert refused.status_code == 409

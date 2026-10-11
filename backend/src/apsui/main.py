@@ -11,6 +11,7 @@ from apsui.api import router as api_router
 from apsui.apworlds import finish_apworld
 from apsui.config import Settings, get_settings
 from apsui.db import make_engine, make_sessionmaker
+from apsui.generation import finish_generation
 from apsui.jobs import JobQueue
 from apsui.spa import SPAStaticFiles
 from apsui.uploads import finish_yaml
@@ -32,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         jobs.ensure()
         jobs.on_finished["validate-yaml"] = functools.partial(finish_yaml, settings=settings)
         jobs.on_finished["test-apworld"] = functools.partial(finish_apworld, settings=settings)
+        jobs.on_finished["generate"] = functools.partial(finish_generation, settings=settings)
         app.state.jobs = jobs
 
         async def collect_jobs() -> None:

@@ -18,6 +18,7 @@ function stubHealth(health: () => Promise<Response>) {
     if (url === '/api/game') return Promise.resolve(Response.json(openGame))
     if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
     if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+    if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
     if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
     if (url === '/api/uploads') return Promise.resolve(Response.json([]))
     return health()
@@ -75,13 +76,17 @@ describe('admin page', () => {
 
 describe('current game', () => {
   it('shows the state and moves it with the allowed action', async () => {
+    let current = openGame
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (url === '/api/game/lock' && init?.method === 'POST')
-        return Promise.resolve(Response.json({ ...openGame, state: 'locked', actions: ['unlock'] }))
-      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      if (url === '/api/game/lock' && init?.method === 'POST') {
+        current = { ...openGame, state: 'locked', actions: ['unlock'] }
+        return Promise.resolve(Response.json(current))
+      }
+      if (url === '/api/game') return Promise.resolve(Response.json(current))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
       if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
       return okHealth()
@@ -112,6 +117,7 @@ describe('current game', () => {
         if (url === '/api/game') return Promise.resolve(Response.json(openGame))
         if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
         if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+        if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
         if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
         if (url === '/api/uploads') return Promise.resolve(Response.json([]))
         return okHealth()
@@ -156,6 +162,7 @@ describe('uploads', () => {
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
       if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       return okHealth()
     })
@@ -194,6 +201,7 @@ describe('uploads', () => {
         if (url === '/api/game') return Promise.resolve(Response.json(openGame))
         if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
         if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+        if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
         if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
         return okHealth()
       }),
@@ -234,6 +242,7 @@ describe('fixing slot names', () => {
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
       if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       return okHealth()
     })
@@ -335,6 +344,7 @@ describe('apworld approval', () => {
       if (url === '/api/apworlds') return Promise.resolve(Response.json([pending]))
       if (url === '/api/apworlds/7') return Promise.resolve(Response.json(detail))
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
       if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
@@ -482,5 +492,44 @@ describe('upload log', () => {
     await userEvent.click(code!)
     expect(await screen.findByText('Upload log: yaml-5')).toBeInTheDocument()
     expect(screen.getByText(/Traceback \(most recent call last\)/)).toBeInTheDocument()
+  })
+})
+
+describe('generation', () => {
+  it('generates from Locked and shows which upload a failure points at', async () => {
+    const locked = { ...openGame, state: 'locked', actions: ['unlock', 'generate'] }
+    const failed = {
+      id: 1,
+      status: 'failed',
+      started_at: '2026-10-10T00:00:00Z',
+      finished_at: '2026-10-10T00:00:05Z',
+      seed_name: null,
+      output_file: null,
+      players: [],
+      error_code: 'exception',
+      error_message: 'ValueError: Encountered 1 error(s) in player files.',
+      culprits: [{ upload_id: 2, filename: 'hornet.yaml', slots: ['Hornet'] }],
+      traceback: 'Traceback ...',
+      log_tail: null,
+    }
+    let generations: unknown[] = []
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/game/generate' && init?.method === 'POST') {
+        generations = [failed]
+        return Promise.resolve(Response.json({ ...failed, status: 'running' }, { status: 202 }))
+      }
+      if (url === '/api/game') return Promise.resolve(Response.json(locked))
+      if (url === '/api/game/generations') return Promise.resolve(Response.json(generations))
+      if (url.startsWith('/api/') && url !== '/api/health')
+        return Promise.resolve(Response.json([]))
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Generate' }))
+    expect(await screen.findByText('Generation failed')).toBeInTheDocument()
+    expect(screen.getByText(/Archipelago points at: hornet\.yaml \(Hornet\)/)).toBeInTheDocument()
   })
 })

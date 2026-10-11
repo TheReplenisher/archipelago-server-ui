@@ -155,4 +155,26 @@ class WorldLock(Base):
     apworld: Mapped[Apworld | None] = relationship()
 
 
-__all__ = ["Apworld", "Base", "Game", "Job", "Slot", "Upload", "WorldLock"]
+class Generation(Base):
+    """One generation run for a game (DESIGN.md §3, #18): the generation log."""
+
+    __tablename__ = "generations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_id: Mapped[int] = mapped_column(ForeignKey("games.id"))
+    job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"))
+    status: Mapped[str] = mapped_column(String(16))
+    """running, ok or failed."""
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    seed_name: Mapped[str | None] = mapped_column(String(64))
+    output_file: Mapped[str | None] = mapped_column(String(255))
+    """The output zip's name in game/output/."""
+    players: Mapped[list[str] | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    error_message: Mapped[str | None] = mapped_column(Text)
+    culprits: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    """The uploads AP's error points at: [{"upload_id", "filename", "slots"}]."""
+
+
+__all__ = ["Apworld", "Base", "Game", "Generation", "Job", "Slot", "Upload", "WorldLock"]

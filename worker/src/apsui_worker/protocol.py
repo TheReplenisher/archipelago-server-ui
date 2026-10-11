@@ -47,6 +47,7 @@ DEFAULT_TIMEOUTS: dict[str, float] = {
     "list-worlds": 300,
     "validate-yaml": 120,
     "test-apworld": 300,
+    "generate": 3600,
 }
 """Seconds. The worker also caps every job at its own maximum."""
 

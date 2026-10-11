@@ -1,20 +1,22 @@
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from apsui.db import get_session
+from apsui.generation import GenerationError, discard_output, start, summary
 from apsui.lifecycle import Action, GameState, TransitionError, allowed_actions, apply, current_game
-from apsui.models import Game
+from apsui.models import Game, Generation
 from apsui.uploads import unsettled_count
 
 router = APIRouter(prefix="/game", tags=["game"])
 
-ADMIN_ACTIONS = (Action.LOCK, Action.UNLOCK)
-"""Actions the admin triggers directly. Generate (#18), start/stop (#24) and archive (#19)
-are added by their own features, since each does more than change the state."""
+ADMIN_ACTIONS = (Action.LOCK, Action.UNLOCK, Action.GENERATE, Action.DISCARD_OUTPUT)
+"""Actions the admin triggers directly. Start/stop (#24) and archive (#19) are added by
+their own features, since each does more than change the state."""
 
 
 class GameOut(BaseModel):
@@ -66,3 +68,60 @@ def lock(session: SessionDep) -> GameOut:
 def unlock(session: SessionDep) -> GameOut:
     """Re-open uploads."""
     return _admin_action(session, Action.UNLOCK)
+
+
+class Culprit(BaseModel):
+    upload_id: int
+    filename: str
+    slots: list[str]
+
+
+class GenerationOut(BaseModel):
+    id: int
+    status: str
+    """running, ok or failed."""
+    started_at: datetime
+    finished_at: datetime | None
+    seed_name: str | None
+    output_file: str | None
+    players: list[str]
+    error_code: str | None
+    error_message: str | None
+    culprits: list[Culprit]
+    """The uploads Archipelago's error points at, where it names one."""
+    traceback: str | None
+    log_tail: str | None
+
+
+def _generation_error(exc: GenerationError) -> HTTPException:
+    return HTTPException(exc.status, detail={"code": exc.code, "message": exc.message})
+
+
+@router.post("/generate", status_code=202)
+def generate(request: Request, session: SessionDep) -> GenerationOut:
+    """Generate the multiworld from the accepted YAMLs (from Locked). Poll GET /api/game
+    and GET /api/game/generations for the result."""
+    try:
+        generation = start(session, request.app.state.jobs, request.app.state.settings)
+    except GenerationError as exc:
+        raise _generation_error(exc) from exc
+    return GenerationOut.model_validate(summary(session, generation))
+
+
+@router.post("/discard-output")
+def discard(request: Request, session: SessionDep) -> GameOut:
+    """Throw the generated output away and return to Locked."""
+    try:
+        return game_out(discard_output(session, request.app.state.settings))
+    except GenerationError as exc:
+        raise _generation_error(exc) from exc
+
+
+@router.get("/generations")
+def list_generations(session: SessionDep) -> list[GenerationOut]:
+    """The current game's generation log, newest first."""
+    game = current_game(session)
+    generations = session.scalars(
+        select(Generation).where(Generation.game_id == game.id).order_by(Generation.id.desc())
+    )
+    return [GenerationOut.model_validate(summary(session, g)) for g in generations]
