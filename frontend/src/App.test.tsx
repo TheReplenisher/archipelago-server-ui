@@ -601,7 +601,12 @@ describe('server control', () => {
       '/api/server/command',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ text: '/players' }) }),
     )
-    expect(screen.getByRole('textbox', { name: 'Console' })).toHaveValue('')
+    const input = screen.getByRole('textbox', { name: 'Console' })
+    expect(input).toHaveValue('')
+    await userEvent.type(input, '{ArrowUp}')
+    expect(input).toHaveValue('/players')
+    await userEvent.type(input, '{ArrowDown}')
+    expect(input).toHaveValue('')
   })
 })
 
