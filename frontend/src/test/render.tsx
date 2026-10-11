@@ -9,7 +9,8 @@ export function renderRoute(path: string) {
   return {
     router,
     ...render(
-      <MantineProvider theme={theme}>
+      // env="test": no transitions or portals, as Mantine's testing guide suggests
+      <MantineProvider theme={theme} env="test">
         <RouterProvider router={router} />
       </MantineProvider>,
     ),

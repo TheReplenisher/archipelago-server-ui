@@ -27,6 +27,9 @@ for line in sys.stdin:
         Path(sys.argv[1]).with_suffix(".apsave").write_text("saved")
     elif line.strip() == "/exit":
         sys.exit(0)
+    else:
+        with Path(sys.argv[1]).with_suffix(".console").open("a") as f:
+            f.write(line)
 """
 
 
@@ -79,6 +82,26 @@ def test_start_save_stop(client: TestClient, settings: Settings) -> None:
     stopped = client.post("/api/game/stop")
     assert (stopped.status_code, stopped.json()["state"]) == (200, "generated")
     assert server(client)["state"] == "stopped"
+
+
+def test_a_console_command_reaches_multiserver(client: TestClient, settings: Settings) -> None:
+    response = client.post("/api/server/command", json={"text": "/players"})
+    assert (response.status_code, response.json()["detail"]["code"]) == (409, "not-running")
+    generated_game(client, "Knight")
+    client.post("/api/game/start")
+    until(client, "running")
+
+    response = client.post("/api/server/command", json={"text": "/players"})
+    assert (response.status_code, response.json()["state"]) == (200, "running")
+    response = client.post("/api/server/command", json={"text": "/players\n/exit"})
+    assert (response.status_code, response.json()["detail"]["code"]) == (409, "bad-command")
+    console = settings.game_dir / "output" / "AP_12345.console"
+    for _ in range(100):
+        if console.exists():
+            break
+        time.sleep(0.02)
+    assert console.read_text() == "/players\n"
+    assert server(client)["state"] == "running"
 
 
 def test_start_needs_a_generated_game(client: TestClient) -> None:

@@ -6,11 +6,14 @@ locked to a library apworld.
 Params: plando_options (str, default AP's), spoiler (int 0-3, default 3), race (bool),
         seed (int or null).
 Output: {"archipelago_version", "seed", "seed_name", "zip", "players": [slot names]},
-        and output/<zip>, the file MultiServer hosts.
+        output/<zip>, the file MultiServer hosts, and output/names.json: each slot's
+        number, name and game, and each game's item and location names (its data
+        package), for the admin console's searchable lists (#26).
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 from typing import TYPE_CHECKING, Any
@@ -60,6 +63,8 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
     if len(zips) != 1:
         raise JobFailure("no-output", "Generation finished without an output file")
     shutil.move(zips[0], ctx.output_dir / zips[0].name)
+    names = json.dumps(console_names(multiworld), ensure_ascii=False)
+    (ctx.output_dir / "names.json").write_text(names, encoding="utf-8")
     return {
         "archipelago_version": Utils.__version__,
         "seed": seed,
@@ -67,3 +72,18 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
         "zip": zips[0].name,
         "players": [multiworld.player_name[p] for p in multiworld.player_ids],
     }
+
+
+def console_names(multiworld: Any) -> dict[str, Any]:
+    """The slots, and each game's item and location names."""
+    players = []
+    games: dict[str, dict[str, list[str]]] = {}
+    for slot in multiworld.player_ids:
+        world = multiworld.worlds[slot]
+        players.append({"slot": slot, "name": multiworld.player_name[slot], "game": world.game})
+        if world.game not in games:
+            games[world.game] = {
+                "items": sorted(world.item_name_to_id),
+                "locations": sorted(world.location_name_to_id),
+            }
+    return {"players": players, "games": games}

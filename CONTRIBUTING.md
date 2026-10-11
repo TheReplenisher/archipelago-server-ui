@@ -20,8 +20,9 @@ Node.js 22 or newer.
 backend/    FastAPI web service (package `apsui`): API, SQLite + Alembic migrations
 worker/     worker service (package `apsui_worker`): runs jobs that execute Archipelago code;
             standard library only, installed into Archipelago's own environment
-server/     server service (package `apsui_server`): the supervisor for MultiServer and its
-            control socket; standard library only, never imports Archipelago
+server/     server service (package `apsui_server`): the supervisor for MultiServer, its
+            control socket and the console's command catalog; standard library only,
+            never imports Archipelago
 compose.yaml  the Docker Compose stack
 frontend/   React + TypeScript + Vite + Mantine; built into frontend/dist
 ```

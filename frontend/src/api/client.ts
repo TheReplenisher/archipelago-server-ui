@@ -251,6 +251,9 @@ export interface ServerStatus {
 export const getServer = (signal?: AbortSignal) => getJson<ServerStatus>('/server', { signal })
 export const saveServer = () => postJson<ServerStatus>('/server/save')
 
+/** One line for MultiServer's console, as typed there: a /command, or chat as the server. */
+export const sendCommand = (text: string) => postJsonBody<ServerStatus>('/server/command', { text })
+
 export interface HealthDetails {
   version: string
   archipelago_version: string | null
@@ -294,3 +297,33 @@ export async function getSpoilerText(signal?: AbortSignal): Promise<string> {
   if (!response.ok) throw new ApiError(response.status, await errorMessage(response))
   return response.text()
 }
+
+export interface CommandArg {
+  name: string
+  /** player, item, location, number, option or text. */
+  kind: string
+  required: boolean
+  /** Takes the rest of the line (the command joins the words). */
+  rest: boolean
+  default: string | null
+  choices: string[]
+}
+
+export interface ConsoleCommand {
+  name: string
+  help: string
+  /** Gets everything after the command as one text, unquoted. */
+  raw: boolean
+  args: CommandArg[]
+}
+
+export interface ConsoleNames {
+  players: { slot: number; name: string; game: string }[]
+  games: Record<string, { items: string[]; locations: string[] }>
+}
+
+export const listCommands = (signal?: AbortSignal) =>
+  getJson<ConsoleCommand[]>('/console/commands', { signal })
+
+export const getConsoleNames = (signal?: AbortSignal) =>
+  getJson<ConsoleNames>('/console/names', { signal })

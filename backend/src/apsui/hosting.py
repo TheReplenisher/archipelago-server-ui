@@ -38,9 +38,11 @@ def prepare_worlds(session: Session, settings: Settings, game: Game) -> None:
             )
 
 
-async def _ask(settings: Settings, op: str, seconds: float = TIMEOUT) -> dict[str, Any]:
+async def _ask(
+    settings: Settings, op: str, seconds: float = TIMEOUT, **fields: Any
+) -> dict[str, Any]:
     try:
-        response = await request(settings.control_socket, {"op": op}, seconds)
+        response = await request(settings.control_socket, {"op": op, **fields}, seconds)
     except ControlError as exc:
         raise HostingError("server-unreachable", "The server service isn't answering", 503) from exc
     if not response.get("ok"):
@@ -78,3 +80,10 @@ async def save(session: Session, settings: Settings) -> dict[str, Any]:
     if current_game(session).state != GameState.RUNNING:
         raise HostingError("not-running", "The server isn't running")
     return await _ask(settings, "save")
+
+
+async def command(session: Session, settings: Settings, text: str) -> dict[str, Any]:
+    """One line for MultiServer's console; the supervisor checks it is a single line."""
+    if current_game(session).state != GameState.RUNNING:
+        raise HostingError("not-running", "The server isn't running")
+    return await _ask(settings, "command", text=text)

@@ -7,8 +7,8 @@ the server from a console with command assistance, players follow their own slot
 items and hints, and finished games are archived.
 
 > **Status: Alpha 1 in progress.** The admin can run a game end to end: upload and check
-> YAMLs and apworlds, generate, and start, save and stop the server. The console, server
-> feed, slot view, settings page and archives are still to come. See [DESIGN.md](DESIGN.md)
+> YAMLs and apworlds, generate, start, save and stop the server, and send it commands from
+> the console. The server feed, slot view, settings page and archives are still to come. See [DESIGN.md](DESIGN.md)
 > for the plan and [ROADMAP.md](ROADMAP.md) for what comes when.
 
 **Unofficial.** This project is not affiliated with or endorsed by the Archipelago project.
@@ -73,6 +73,10 @@ Everything is on the **Admin** tab.
    **Current game** card and send it to them.
 5. **Save** writes the save file without stopping; **Stop server** saves and shuts down,
    and **Start server** resumes from the save.
+6. While the server runs, the **console** sends a line to MultiServer's own console: pick
+   a **Command** and fill in its arguments (players, items and locations are searchable
+   lists from the game), or type any `/command`, or a message to every player. The up
+   and down arrows recall what you sent. Its replies go to the server's log for now.
 
 The **Spoiler log** button on the same card asks "Are you sure?" before showing anything.
 The **Health** tab shows each service, the ports, disk use and the Archipelago version.

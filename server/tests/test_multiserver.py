@@ -103,6 +103,28 @@ async def test_start_save_stop(make: Callable[..., Supervisor], tmp_path: Path) 
 
 
 @sync
+async def test_a_console_command_reaches_multiserver(
+    make: Callable[..., Supervisor], tmp_path: Path
+) -> None:
+    supervisor = make()
+    assert (await supervisor.handle({"op": "command", "text": "/players"}))["error"] == (
+        "not-running"
+    )
+    await supervisor.handle({"op": "start"})
+    await until(supervisor, "running")
+
+    sent = await supervisor.handle({"op": "command", "text": "  /send Knight Hookshot "})
+    assert (sent["ok"], sent["state"]) == (True, "running")
+    for text in ("/players\n/exit", "", "   ", "x" * 1001, None):
+        refused = await supervisor.handle({"op": "command", "text": text})
+        assert refused["error"] == "bad-command", text
+    assert (await supervisor.handle({"op": "command", "text": "/EXIT"}))["error"] == "refused"
+    await supervisor.handle({"op": "stop"})
+    commands = (tmp_path / "game" / "ap" / "commands.txt").read_text().splitlines()
+    assert commands == ["/send Knight Hookshot", "/save", "/exit"]
+
+
+@sync
 async def test_a_crash_is_reported_with_the_log(make: Callable[..., Supervisor]) -> None:
     supervisor = make("AP_crash.zip")
     await supervisor.handle({"op": "start"})

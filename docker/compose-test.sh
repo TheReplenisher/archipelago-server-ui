@@ -197,6 +197,31 @@ py server <<PY || { echo "no save file after Save"; exit 1; }
 import pathlib
 assert pathlib.Path("/data/game/output/$save").is_file()
 PY
+echo "--- console: the catalog and names, and a /send built from them reaches MultiServer"
+curl -fsS "$base/console/commands" | python3 -c '
+import json, sys
+commands = {c["name"]: c for c in json.load(sys.stdin)}
+assert [a["kind"] for a in commands["send"]["args"]] == ["player", "item"], commands.get("send")' \
+    || { echo "no command catalog"; exit 1; }
+send=$(curl -fsS "$base/console/names" | python3 -c '
+import json, sys
+names = json.load(sys.stdin)
+assert sorted(p["name"] for p in names["players"]) == ["Alice", "Quester"], names["players"]
+game = next(p["game"] for p in names["players"] if p["name"] == "Alice")
+item = names["games"][game]["items"][0]
+print(json.dumps({"text": f"/send Alice \"{item}\""}))') || { echo "no console names"; exit 1; }
+curl -fsS -X POST -H 'Content-Type: application/json' -d "$send" "$base/server/command" \
+    | grep -q '"state":"running"' || { echo "console command failed"; exit 1; }
+for _ in $(seq 20); do
+    py server <<'PY' >/dev/null 2>&1 && break
+assert "Cheat console: sending" in open("/data/game/logs/server.log").read()
+PY
+    sleep 1
+done
+py server <<'PY' || { echo "the /send never reached MultiServer"; exit 1; }
+assert "Cheat console: sending" in open("/data/game/logs/server.log").read()
+PY
+echo "console: ok ($send)"
 curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
 curl -fsS "$base/server" | grep -q '"state":"stopped"' || { echo "server not stopped"; exit 1; }
 echo "server control: ok"
