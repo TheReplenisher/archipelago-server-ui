@@ -4,6 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # frontend/dist in a source checkout: backend/src/apsui/config.py -> repo root
@@ -45,6 +46,15 @@ class Settings(BaseSettings):
     public_game_port: int | None = None
     """The ports published on the host, which the containers can't see for themselves.
     Compose passes them in; shown on the health page."""
+
+    @field_validator("public_web_port", "public_game_port", mode="before")
+    @classmethod
+    def _published_port(cls, value: object) -> object:
+        """Compose passes what the admin published, which may name a host address too
+        (127.0.0.1:8000, [::1]:8000): keep the port."""
+        if isinstance(value, str) and ":" in value:
+            return value.rsplit(":", 1)[1]
+        return value
 
     static_dir: Path | None = None
     """Built frontend. Defaults to frontend/dist when running from a source checkout."""

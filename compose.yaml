@@ -8,6 +8,7 @@
 #   APSUI_IMAGE           image to run          (default: the latest build of main)
 #   APSUI_WEB_PORT        web UI, plain HTTP    (default 8000; put HTTPS in front of it)
 #   APSUI_GAME_PORT       Archipelago clients   (default 38281)
+#                         Either may name a host address too, e.g. 127.0.0.1:8000.
 #   APSUI_WEB_MEMORY      memory limits         (defaults 512m / 2g / 1g)
 #   APSUI_WORKER_MEMORY
 #   APSUI_SERVER_MEMORY
