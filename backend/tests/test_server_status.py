@@ -22,16 +22,21 @@ def test_reports_the_supervisor_state(
     settings.control_socket = supervisor_socket
     with TestClient(create_app(settings)) as client:
         response = client.get("/api/server")
-    assert response.json() == {
+    assert response.json() | {"port": None} == response.json() | {
         "reachable": True,
         "state": "stopped",
         "archipelago_version": "0.6.8",
+        "multidata": None,
+        "exit_code": None,
+        "log_tail": [],
+        "port": None,
     }
 
 
 def test_unreachable_supervisor(client: TestClient) -> None:
-    assert client.get("/api/server").json() == {
-        "reachable": False,
-        "state": None,
-        "archipelago_version": None,
-    }
+    status = client.get("/api/server").json()
+    assert (status["reachable"], status["state"], status["archipelago_version"]) == (
+        False,
+        None,
+        None,
+    )

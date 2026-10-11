@@ -155,6 +155,40 @@ assert zipfile.is_zipfile("/data/game/output/$zip")
 PY
 echo "generation: ok ($zip)"
 
+echo "--- server control: real MultiServer starts, answers on the game port, saves, stops"
+curl -fsS -X POST "$base/game/start" | grep -q '"state":"running"' || { echo "start failed"; exit 1; }
+for _ in $(seq 90); do
+    curl -fsS "$base/server" | grep -q '"state":"running"' && break
+    sleep 1
+done
+curl -fsS "$base/server" | grep -q '"state":"running"' \
+    || { echo "MultiServer not running: $(curl -fsS "$base/server")"; exit 1; }
+python3 - "$APSUI_GAME_PORT" <<'PY' || { echo "game port not answering"; exit 1; }
+import base64, os, socket, sys
+# An Archipelago client starts with a WebSocket handshake; MultiServer must accept it.
+key = base64.b64encode(os.urandom(16)).decode()
+with socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=10) as s:
+    s.sendall(f"GET / HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+              f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n".encode())
+    assert s.recv(200).startswith(b"HTTP/1.1 101"), "no WebSocket upgrade"
+PY
+curl -fsS -X POST "$base/server/save" >/dev/null
+save="${zip%.zip}.apsave"
+for _ in $(seq 20); do
+    py server <<PY >/dev/null 2>&1 && break
+import pathlib
+assert pathlib.Path("/data/game/output/$save").is_file()
+PY
+    sleep 1
+done
+py server <<PY || { echo "no save file after Save"; exit 1; }
+import pathlib
+assert pathlib.Path("/data/game/output/$save").is_file()
+PY
+curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
+curl -fsS "$base/server" | grep -q '"state":"stopped"' || { echo "server not stopped"; exit 1; }
+echo "server control: ok"
+
 # Checks run inside every service.
 common_checks='
 import os, sys

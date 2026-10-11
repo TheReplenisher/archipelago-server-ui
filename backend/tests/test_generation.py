@@ -1,20 +1,18 @@
 """Manual generation (#18). The worker's generate job needs Archipelago, so its results
 are written straight into done/; the real job runs in docker/compose-test.sh."""
 
-import io
-import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from apsui_worker.protocol import OUTPUT_DIR, JobError, State
+from apsui_worker.protocol import JobError
 from apworld_files import make_apworld
 from fastapi.testclient import TestClient
+from game_flow import accept_yaml, finish_with_zip, output_zip
 from worker_sim import worker_finishes
 
 from apsui.config import Settings
-from apsui.jobs import JobQueue
 from apsui.main import create_app
 
 
@@ -23,58 +21,6 @@ def client(settings: Settings) -> Iterator[TestClient]:
     settings.job_poll_interval = 3600  # tests collect by hand
     with TestClient(create_app(settings)) as c:
         yield c
-
-
-def accept_yaml(
-    client: TestClient, name: str, game: str = "APQuest", apworld_ids: list[int] | None = None
-) -> int:
-    yaml = f"name: {name}\ngame: {game}\n{game}: {{}}\n".encode()
-    response = client.post(
-        "/api/uploads/yaml",
-        files={"file": (f"{name.lower()}.yaml", yaml)},
-        data={"apworld_ids": [str(i) for i in apworld_ids or []]},
-    )
-    assert response.status_code == 202, response.text
-    doc = {"index": 0, "empty": False, "name": name, "name_raw": name, "games": [game]}
-    worker_finishes(
-        client, {"validate-yaml": {"error": None, "documents": [doc], "custom_games": [game]}}
-    )
-    upload_id: int = response.json()["id"]
-    return upload_id
-
-
-def output_zip() -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as zf:
-        # A fixed timestamp, so every call gives the same bytes.
-        zf.writestr(zipfile.ZipInfo("AP_12345.archipelago", (2026, 1, 1, 0, 0, 0)), b"multidata")
-    return buffer.getvalue()
-
-
-def generated(players: list[str]) -> dict[str, Any]:
-    """A generate result that also writes the output zip, as the worker would."""
-
-    def output(spec: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "archipelago_version": "0.6.8",
-            "seed": 1,
-            "seed_name": "12345",
-            "zip": "AP_12345.zip",
-            "players": players,
-        }
-
-    return {"generate": output}
-
-
-def finish_with_zip(
-    client: TestClient, players: list[str], data: bytes | None = None
-) -> list[dict[str, Any]]:
-    jobs: JobQueue = client.app.state.jobs  # type: ignore[attr-defined]
-    for job_id in jobs.dirs.ids(State.QUEUE):
-        out = jobs.dirs.path(State.QUEUE, job_id) / OUTPUT_DIR
-        out.mkdir(exist_ok=True)
-        (out / "AP_12345.zip").write_bytes(output_zip() if data is None else data)
-    return worker_finishes(client, generated(players))
 
 
 def game(client: TestClient) -> dict[str, Any]:
@@ -98,7 +44,7 @@ def test_generation_runs_from_locked_and_stores_the_output(
     assert spec["type"] == "generate"
     assert spec["inputs"] == [f"{first}.yaml", f"{second}.yaml"]
     assert game(client)["state"] == "generated"
-    assert game(client)["actions"] == ["discard-output"]
+    assert game(client)["actions"] == ["discard-output", "start"]
     [entry] = client.get("/api/game/generations").json()
     assert (entry["status"], entry["seed_name"], entry["players"]) == (
         "ok",

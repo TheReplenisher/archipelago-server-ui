@@ -533,3 +533,49 @@ describe('generation', () => {
     expect(screen.getByText(/Archipelago points at: hornet\.yaml \(Hornet\)/)).toBeInTheDocument()
   })
 })
+
+describe('server control', () => {
+  it('starts the server, shows it running, and saves', async () => {
+    const generatedGame = { ...openGame, state: 'generated', actions: ['discard-output', 'start'] }
+    const runningGame = { ...openGame, state: 'running', actions: ['stop'] }
+    let current = generatedGame
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/game/start' && init?.method === 'POST') {
+        current = runningGame
+        return Promise.resolve(Response.json(current))
+      }
+      if (url === '/api/server/save' && init?.method === 'POST')
+        return Promise.resolve(Response.json({ reachable: true, state: 'running' }))
+      if (url === '/api/game') return Promise.resolve(Response.json(current))
+      if (url === '/api/server')
+        return Promise.resolve(
+          Response.json({
+            reachable: true,
+            state: 'running',
+            archipelago_version: '0.6.8',
+            multidata: 'AP_12345.zip',
+            port: 38281,
+            started_at: '2026-10-10T00:00:00Z',
+            exit_code: null,
+            log_tail: [],
+          }),
+        )
+      if (url.startsWith('/api/') && url !== '/api/health')
+        return Promise.resolve(Response.json([]))
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Start server' }))
+    expect(
+      await screen.findByText('Server running on port 38281 (AP_12345.zip)'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stop server' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/server/save', expect.anything()),
+    )
+  })
+})

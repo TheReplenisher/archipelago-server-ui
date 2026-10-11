@@ -13,13 +13,13 @@ from apsui_server.supervisor import Supervisor, serve
 
 
 @contextlib.contextmanager
-def running_supervisor(socket_path: Path) -> Iterator[Path]:
+def running_supervisor(socket_path: Path, supervisor: Supervisor | None = None) -> Iterator[Path]:
     started = threading.Event()
     running: list[tuple[asyncio.AbstractEventLoop, asyncio.Task[None]]] = []
 
     async def main() -> None:
         ready = asyncio.Event()
-        task = asyncio.create_task(serve(socket_path, Supervisor(), ready))
+        task = asyncio.create_task(serve(socket_path, supervisor or Supervisor(), ready))
         running.append((asyncio.get_running_loop(), task))
         await ready.wait()
         started.set()
