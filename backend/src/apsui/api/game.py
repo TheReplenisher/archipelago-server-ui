@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from apsui import hosting, patches, spoiler
+from apsui.archives import is_empty
 from apsui.db import get_session
 from apsui.generation import GenerationError, discard_output, start, summary
 from apsui.lifecycle import Action, GameState, TransitionError, allowed_actions, apply, current_game
@@ -25,8 +26,8 @@ ADMIN_ACTIONS = (
     Action.START,
     Action.STOP,
 )
-"""Actions the admin triggers directly. Archive (#19) is added by its own feature, since
-it does more than change the state."""
+"""Actions the admin triggers directly. ARCHIVE (#19) does more than change the state; it
+is POST /api/game/archive, offered when `archivable`."""
 
 
 class GameOut(BaseModel):
@@ -36,9 +37,11 @@ class GameOut(BaseModel):
     updated_at: datetime
     actions: list[Action]
     """What the admin can do from this state."""
+    archivable: bool
+    """ARCHIVE is possible: not mid-generation, and there is something to keep."""
 
 
-def game_out(game: Game) -> GameOut:
+def game_out(game: Game, session: Session) -> GameOut:
     state = GameState(game.state)
     return GameOut(
         id=game.id,
@@ -46,6 +49,7 @@ def game_out(game: Game) -> GameOut:
         created_at=game.created_at,
         updated_at=game.updated_at,
         actions=[a for a in allowed_actions(state) if a in ADMIN_ACTIONS],
+        archivable=Action.ARCHIVE in allowed_actions(state) and not is_empty(session, game),
     )
 
 
@@ -54,12 +58,12 @@ SessionDep = Annotated[Session, Depends(get_session)]
 
 @router.get("")
 def get_game(session: SessionDep) -> GameOut:
-    return game_out(current_game(session))
+    return game_out(current_game(session), session)
 
 
 def _admin_action(session: Session, action: Action) -> GameOut:
     try:
-        return game_out(apply(session, current_game(session), action))
+        return game_out(apply(session, current_game(session), action), session)
     except TransitionError as exc:
         raise HTTPException(409, detail={"code": exc.code, "message": str(exc)}) from exc
 
@@ -122,7 +126,7 @@ def generate(request: Request, session: SessionDep) -> GenerationOut:
 def discard(request: Request, session: SessionDep) -> GameOut:
     """Throw the generated output away and return to Locked."""
     try:
-        return game_out(discard_output(session, request.app.state.settings))
+        return game_out(discard_output(session, request.app.state.settings), session)
     except GenerationError as exc:
         raise _generation_error(exc) from exc
 
@@ -146,7 +150,7 @@ async def start_server(request: Request, session: SessionDep) -> GameOut:
     """Start the live server on the generated game (Generated → Running). It reports
     `starting` until MultiServer is up; see GET /api/server."""
     try:
-        return game_out(await hosting.start(session, request.app.state.settings))
+        return game_out(await hosting.start(session, request.app.state.settings), session)
     except hosting.HostingError as exc:
         raise _hosting_error(exc) from exc
 
@@ -155,7 +159,7 @@ async def start_server(request: Request, session: SessionDep) -> GameOut:
 async def stop_server(request: Request, session: SessionDep) -> GameOut:
     """Save and shut the server down (Running → Generated); Start resumes from the save."""
     try:
-        return game_out(await hosting.stop(session, request.app.state.settings))
+        return game_out(await hosting.stop(session, request.app.state.settings), session)
     except hosting.HostingError as exc:
         raise _hosting_error(exc) from exc
 

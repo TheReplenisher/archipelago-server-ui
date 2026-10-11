@@ -73,7 +73,13 @@ def test_the_defaults_and_every_field(client: TestClient, settings: Settings) ->
     assert body["values"] == HostSettings(max_slots=settings.max_slots).model_dump()
     assert body["values"]["disable_item_cheat"] is True  # ours; AP's default is off
     assert [f["key"] for f in body["fields"]] == list(HostSettings.model_fields)
-    assert {f["applies"] for f in body["fields"]} == {"live", "start", "generation", "upload"}
+    assert {f["applies"] for f in body["fields"]} == {
+        "live",
+        "start",
+        "generation",
+        "upload",
+        "archive",
+    }
 
 
 @pytest.mark.parametrize(

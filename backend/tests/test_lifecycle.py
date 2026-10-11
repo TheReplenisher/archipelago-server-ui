@@ -63,6 +63,29 @@ def test_the_whole_happy_path(session: Session) -> None:
     assert new.id != archived.id and new.state == S.OPEN  # ARCHIVE re-opens uploads
 
 
+@pytest.mark.parametrize(
+    ("actions", "state"),
+    [((), S.OPEN), ((Action.LOCK,), S.LOCKED), ((Action.LOCK, Action.GENERATE,
+      Action.GENERATION_SUCCEEDED), S.GENERATED)],
+)  # fmt: skip
+def test_restore_returns_to_the_state_it_was_archived_from(
+    session: Session, actions: tuple[Action, ...], state: GameState
+) -> None:
+    game = walk(session, *actions)
+    archived = apply(session, game, Action.ARCHIVE)
+    current_game(session)  # a new game is current now; restore needs it gone
+    session.delete(current_game(session))
+    session.flush()
+    restored = apply(session, archived, Action.RESTORE, target=state)
+    assert (restored.state, restored.is_current, restored.archived_at) == (state, True, None)
+
+
+def test_only_restore_takes_a_target(session: Session) -> None:
+    game = current_game(session)
+    with pytest.raises(ValueError, match="can't go to"):
+        apply(session, game, Action.LOCK, target=S.GENERATED)
+
+
 def test_failure_and_unlock_paths(session: Session) -> None:
     game = walk(session, Action.LOCK, Action.GENERATE, Action.GENERATION_FAILED)
     assert game.state == S.LOCKED
@@ -79,8 +102,7 @@ def test_failure_and_unlock_paths(session: Session) -> None:
         ((), Action.START),
         ((Action.LOCK,), Action.START),  # nothing generated yet
         ((Action.LOCK, Action.GENERATE), Action.UNLOCK),  # not mid-generation
-        ((Action.LOCK, Action.GENERATE), Action.ARCHIVE),
-        ((), Action.ARCHIVE),
+        ((Action.LOCK, Action.GENERATE), Action.ARCHIVE),  # not mid-generation
     ],
 )
 def test_illegal_transitions_are_refused(

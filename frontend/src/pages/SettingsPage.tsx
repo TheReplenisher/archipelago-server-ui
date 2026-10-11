@@ -33,6 +33,11 @@ const groups: { key: SettingField['group']; title: string; note: string }[] = [
   },
   { key: 'generation', title: 'Generation', note: 'Applied at the next generation.' },
   { key: 'uploads', title: 'Uploads', note: 'Applied to the next upload.' },
+  {
+    key: 'archives',
+    title: 'Archives',
+    note: 'Applied each time a game is archived; saving here deletes nothing.',
+  },
   { key: 'advanced', title: 'Advanced', note: '' },
 ]
 
@@ -41,6 +46,7 @@ const appliesBadge: Record<SettingField['applies'], string> = {
   start: 'Next start',
   generation: 'Next generation',
   upload: 'Next upload',
+  archive: 'Next archive',
 }
 
 interface FieldProps {
@@ -238,7 +244,7 @@ export function SettingsPage() {
           {saved.length > 0
             ? `Applied to the running server now: ${saved.map(label).join(', ')}. `
             : ''}
-          Everything else applies at the next start, generation or upload.
+          Everything else applies at the next start, generation, upload or archive.
         </Alert>
       )}
       {page && (

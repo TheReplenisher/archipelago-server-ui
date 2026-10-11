@@ -24,8 +24,7 @@ from apsui.config import Settings
 from apsui.generation import output_dir
 from apsui.lifecycle import GameState, current_game
 from apsui.models import Generation
-
-CHUNK = 256 * 1024
+from apsui.zipstream import CHUNK, Sink
 
 
 def _pattern(seed_name: str) -> re.Pattern[str]:
@@ -91,24 +90,6 @@ def read_patch(session: Session, settings: Settings, file: str) -> Iterator[byte
     return chunks()
 
 
-class _Sink:
-    """A write-only stream that hands out what was written so far."""
-
-    def __init__(self) -> None:
-        self.parts: list[bytes] = []
-
-    def write(self, data: bytes) -> int:
-        self.parts.append(bytes(data))
-        return len(data)
-
-    def flush(self) -> None:
-        pass
-
-    def take(self) -> bytes:
-        data, self.parts = b"".join(self.parts), []
-        return data
-
-
 def all_patches(session: Session, settings: Settings) -> tuple[str, Iterator[bytes]]:
     """Every listed patch file as one zip, streamed as it is built."""
     patches = list_patches(session, settings)
@@ -117,7 +98,7 @@ def all_patches(session: Session, settings: Settings) -> tuple[str, Iterator[byt
     path, generation = output_zip(session, settings)
 
     def chunks() -> Iterator[bytes]:
-        sink = _Sink()
+        sink = Sink()
         with zipfile.ZipFile(path) as source, zipfile.ZipFile(cast("IO[bytes]", sink), "w") as out:
             for patch in patches:
                 with source.open(patch.file) as src, out.open(patch.file, "w") as dest:

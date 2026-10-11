@@ -5,7 +5,17 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from apsui.db import Base
@@ -42,6 +52,11 @@ class Game(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_from: Mapped[str | None] = mapped_column(String(16))
+    """The state it was archived in; restore returns it there (Running comes back
+    Generated)."""
+    archive_size: Mapped[int | None] = mapped_column(BigInteger)
+    """Bytes in archives/<id>/, while archived: retention by size adds these up."""
 
 
 class Upload(Base):

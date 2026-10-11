@@ -1,6 +1,7 @@
-import { Alert, Badge, Button, Card, Code, Group, Stack, Text } from '@mantine/core'
+import { Alert, Badge, Button, Card, Code, Divider, Group, Modal, Stack, Text } from '@mantine/core'
 import { useEffect, useState } from 'react'
 import {
+  archiveGame,
   getGame,
   getServer,
   listGenerations,
@@ -111,7 +112,60 @@ function LatestGeneration({ generation }: { generation: Generation }) {
   )
 }
 
-export function CurrentGame() {
+/** ARCHIVE: separate from the other buttons, behind an "Are you sure?" prompt. */
+function ArchiveButton({ game, onArchived }: { game: Game; onArchived: () => void }) {
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const archive = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await archiveGame()
+      setConfirming(false)
+      onArchived()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Divider />
+      <Group justify="space-between">
+        <Text size="xs" c="dimmed">
+          Ends this game and keeps everything in an archive; a new game opens for uploads.
+        </Text>
+        <Button color="red" variant="outline" onClick={() => setConfirming(true)}>
+          ARCHIVE
+        </Button>
+      </Group>
+      <Modal opened={confirming} onClose={() => setConfirming(false)} title="Archive this game?">
+        <Stack gap="sm">
+          <Text size="sm">
+            {game.state === 'running' && 'The server is saved and stopped. '}
+            Game #{game.id}'s YAMLs, output, save file, spoiler log, apworlds and logs move into an
+            archive, and a new game opens for uploads. You can restore it later from Archives.
+          </Text>
+          {error && <Alert color="red">{error}</Alert>}
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button color="red" loading={busy} onClick={archive}>
+              ARCHIVE
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
+  )
+}
+
+export function CurrentGame({ onChanged }: { onChanged?: () => void }) {
   const [game, setGame] = useState<Game | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -207,6 +261,12 @@ export function CurrentGame() {
               </Button>
             )}
           </Group>
+        )}
+        {game?.archivable && (
+          <ArchiveButton
+            game={game}
+            onArchived={() => (onChanged ? onChanged() : setVersion((v) => v + 1))}
+          />
         )}
       </Stack>
     </Card>

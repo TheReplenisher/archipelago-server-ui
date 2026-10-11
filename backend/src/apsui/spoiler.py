@@ -14,7 +14,8 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from apsui.config import Settings
-from apsui.patches import CHUNK, PatchError, output_zip
+from apsui.patches import PatchError, output_zip
+from apsui.zipstream import CHUNK
 
 
 @dataclass(frozen=True)

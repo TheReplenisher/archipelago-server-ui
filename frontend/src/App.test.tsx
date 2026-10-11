@@ -9,6 +9,7 @@ const openGame = {
   created_at: '2026-10-09T00:00:00Z',
   updated_at: '2026-10-09T00:00:00Z',
   actions: ['lock'],
+  archivable: false,
 }
 
 /** Answers /api/health with `health` and /api/game like a fresh install. */
@@ -21,6 +22,7 @@ function stubHealth(health: () => Promise<Response>) {
     if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
     if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
     if (url === '/api/uploads') return Promise.resolve(Response.json([]))
+    if (url === '/api/archives') return Promise.resolve(Response.json(noArchives))
     return health()
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -29,6 +31,15 @@ function stubHealth(health: () => Promise<Response>) {
 
 const okHealth = () =>
   Promise.resolve(Response.json({ status: 'ok', version: '1.2.3', database: 'ok' }))
+
+const noArchives = {
+  archives: [],
+  retention: { limit: 'none', max_count: 20, max_size_mb: 10240, count: 0, total_size: 0 },
+}
+
+/** What the admin page also fetches: no archives yet, and the health check. */
+const fallback = (input: RequestInfo | URL) =>
+  String(input) === '/api/archives' ? Promise.resolve(Response.json(noArchives)) : okHealth()
 
 describe('app shell', () => {
   it('sends / to the player page', async () => {
@@ -89,7 +100,7 @@ describe('current game', () => {
       if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
       if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
-      return okHealth()
+      return fallback(input)
     })
     vi.stubGlobal('fetch', fetchMock)
     renderRoute('/admin')
@@ -120,7 +131,7 @@ describe('current game', () => {
         if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
         if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
         if (url === '/api/uploads') return Promise.resolve(Response.json([]))
-        return okHealth()
+        return fallback(input)
       }),
     )
     renderRoute('/admin')
@@ -164,7 +175,7 @@ describe('uploads', () => {
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
       if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
       if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
-      return okHealth()
+      return fallback(input)
     })
     vi.stubGlobal('fetch', fetchMock)
     const { container } = renderRoute('/admin')
@@ -203,7 +214,7 @@ describe('uploads', () => {
         if (url === '/api/worlds') return Promise.resolve(Response.json([]))
         if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
         if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
-        return okHealth()
+        return fallback(input)
       }),
     )
     renderRoute('/admin')
@@ -244,7 +255,7 @@ describe('fixing slot names', () => {
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
       if (url === '/api/game/generations') return Promise.resolve(Response.json([]))
       if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
-      return okHealth()
+      return fallback(input)
     })
     vi.stubGlobal('fetch', fetchMock)
     return fetchMock
@@ -348,7 +359,7 @@ describe('apworld approval', () => {
       if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
-      return okHealth()
+      return fallback(input)
     })
     vi.stubGlobal('fetch', fetchMock)
     return fetchMock
@@ -412,7 +423,7 @@ describe('custom apworlds for a YAML', () => {
         )
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
-      return okHealth()
+      return fallback(input)
     })
     vi.stubGlobal('fetch', fetchMock)
     renderRoute('/admin')
@@ -484,7 +495,7 @@ describe('upload log', () => {
         if (url === '/api/apworlds' || url === '/api/worlds')
           return Promise.resolve(Response.json([]))
         if (url === '/api/game') return Promise.resolve(Response.json(openGame))
-        return okHealth()
+        return fallback(input)
       }),
     )
     renderRoute('/admin')
@@ -521,9 +532,9 @@ describe('generation', () => {
       }
       if (url === '/api/game') return Promise.resolve(Response.json(locked))
       if (url === '/api/game/generations') return Promise.resolve(Response.json(generations))
-      if (url.startsWith('/api/') && url !== '/api/health')
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
         return Promise.resolve(Response.json([]))
-      return okHealth()
+      return fallback(input)
     })
     vi.stubGlobal('fetch', fetchMock)
     renderRoute('/admin')
@@ -569,9 +580,9 @@ describe('server control', () => {
             log_tail: [],
           }),
         )
-      if (url.startsWith('/api/') && url !== '/api/health')
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
         return Promise.resolve(Response.json([]))
-      return okHealth()
+      return fallback(input)
     })
     vi.stubGlobal('fetch', fetchMock)
     renderRoute('/admin')
@@ -650,9 +661,9 @@ describe('console', () => {
       if (url === '/api/console/names') return Promise.resolve(Response.json(names))
       if (url === '/api/server/command' && init?.method === 'POST')
         return Promise.resolve(Response.json({ reachable: true, state: 'running' }))
-      if (url.startsWith('/api/') && url !== '/api/health')
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
         return Promise.resolve(Response.json([]))
-      return okHealth()
+      return fallback(input)
     })
     vi.stubGlobal('fetch', fetchMock)
     renderRoute('/admin')
@@ -862,9 +873,9 @@ describe('spoiler log', () => {
       if (url === '/api/game/spoiler')
         return Promise.resolve(Response.json({ file: 'AP_12345_Spoiler.txt', size: 80 }))
       if (url === '/api/game/spoiler.txt') return Promise.resolve(new Response(spoiler))
-      if (url.startsWith('/api/') && url !== '/api/health')
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
         return Promise.resolve(Response.json([]))
-      return okHealth()
+      return fallback(input)
     })
     vi.stubGlobal('fetch', fetchMock)
     renderRoute('/admin')
@@ -895,9 +906,9 @@ describe('spoiler log', () => {
         if (url === '/api/game') return Promise.resolve(Response.json(generatedGame))
         if (url === '/api/game/spoiler')
           return Promise.resolve(Response.json({ file: 'AP_1_Spoiler.txt', size: 12 * 1024 ** 2 }))
-        if (url.startsWith('/api/') && url !== '/api/health')
+        if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
           return Promise.resolve(Response.json([]))
-        return okHealth()
+        return fallback(input)
       }),
     )
     renderRoute('/admin')
@@ -944,7 +955,7 @@ describe('health page', () => {
               ],
             }),
           )
-        return okHealth()
+        return fallback(input)
       }),
     )
     renderRoute('/health')
@@ -957,5 +968,88 @@ describe('health page', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('38281')).toBeInTheDocument()
     expect(screen.getByText('6.0 GB free of 10.0 GB')).toBeInTheDocument()
+  })
+})
+
+describe('archives', () => {
+  const generatedGame = { ...openGame, id: 3, state: 'generated', actions: ['start'] }
+  const archived = {
+    id: 2,
+    created_at: '2026-10-01T00:00:00Z',
+    archived_at: '2026-10-02T00:00:00Z',
+    archived_from: 'generated',
+    size: 2048,
+    seed_name: '12345',
+    slots: ['Knight', 'Hornet'],
+    worlds: ['APQuest · official · AP 0.6.8'],
+  }
+
+  it('asks before ARCHIVE, then archives the current game', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/game/archive' && init?.method === 'POST')
+        return Promise.resolve(Response.json({ ...openGame, id: 4 }))
+      if (url === '/api/game')
+        return Promise.resolve(Response.json({ ...generatedGame, archivable: true }))
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
+        return Promise.resolve(Response.json([]))
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'ARCHIVE' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Archive this game?' })
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/game/archive', expect.anything())
+    await userEvent.click(within(dialog).getByRole('button', { name: 'ARCHIVE' }))
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/game/archive',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    )
+  })
+
+  it('asks what to do with a current game in the way of a restore', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/archives/2/restore') {
+        const body = JSON.parse(String(init?.body)) as { current: string | null }
+        if (body.current === null)
+          return Promise.resolve(
+            Response.json(
+              {
+                detail: {
+                  code: 'current-game',
+                  message: 'Archive or delete the current game first',
+                  current: { id: 3, state: 'locked', slots: 2 },
+                },
+              },
+              { status: 409 },
+            ),
+          )
+        return Promise.resolve(Response.json({ ...generatedGame, id: 2 }))
+      }
+      if (url === '/api/archives')
+        return Promise.resolve(Response.json({ ...noArchives, archives: [archived] }))
+      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      if (url.startsWith('/api/') && url !== '/api/health')
+        return Promise.resolve(Response.json([]))
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    expect(await screen.findByText('2: Knight, Hornet')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Restore' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Restore game #2?' })
+    expect(within(dialog).getByText(/The current game #3 is/)).toHaveTextContent('locked')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Archive it, then restore' }))
+    await waitFor(() => {
+      const bodies = fetchMock.mock.calls
+        .filter(([u]) => String(u) === '/api/archives/2/restore')
+        .map(([, init]) => JSON.parse(String(init?.body)) as unknown)
+      expect(bodies).toEqual([{ current: null }, { current: 'archive' }])
+    })
   })
 })

@@ -8,6 +8,7 @@ The admin's settings live in app.db (DESIGN.md §2). They reach Archipelago thre
 - **Generation** settings go into each generate job's parameters, and the YAML checks
   use the same plando options and quantity rule.
 - **Uploads** settings (the slot limit, apworld approval) are read by the upload checks.
+- **Archives** settings (retention) are applied each time a game is archived (#19).
 
 The hidden ones (host, port, file paths, logtime, players, disable_save) are set by the
 backend and supervisor, never here.
@@ -60,6 +61,10 @@ class HostSettings(BaseModel):
     # Uploads
     max_slots: int = Field(default=50, ge=1, le=1000)
     apworld_approval: Literal["manual", "auto"] = "manual"
+    # Archives
+    archive_limit: Literal["none", "count", "size"] = "none"
+    archive_max_count: int = Field(default=20, ge=1, le=10_000)
+    archive_max_size_mb: int = Field(default=10_240, ge=1, le=10_000_000)
     # Advanced
     loglevel: Literal["debug", "info", "warning", "error", "critical"] = "info"
     log_network: bool = False
@@ -71,9 +76,9 @@ class FieldInfo:
     key: str
     label: str
     help: str
-    group: Literal["server", "generation", "uploads", "advanced"]
+    group: Literal["server", "generation", "uploads", "archives", "advanced"]
     kind: Literal["text", "password", "number", "bool", "choice", "multi"]
-    applies: Literal["live", "start", "generation", "upload"]
+    applies: Literal["live", "start", "generation", "upload", "archive"]
     """live: at once on a running server (and at every start); else at the next one."""
     choices: list[dict[str, Any]] = field(default_factory=list)
     min: int | None = None
@@ -145,6 +150,15 @@ FIELDS: list[FieldInfo] = [
               "checks needs your approval. One that replaces a built-in world always does.",
               "uploads", "choice", "upload",
               _choices(("manual", "Manual"), ("auto", "Automatic"))),
+    FieldInfo("archive_limit", "Archive limit", "Each time a game is archived, the oldest "
+              "archives are deleted until the rest fit. The newest is always kept.",
+              "archives", "choice", "archive",
+              _choices(("none", "No limit"), ("count", "Number of archives"),
+                       ("size", "Total size"))),
+    FieldInfo("archive_max_count", "Archives to keep", "Used when the limit is the number "
+              "of archives.", "archives", "number", "archive", min=1, max=10_000),
+    FieldInfo("archive_max_size_mb", "Total archive size (MB)", "Used when the limit is the "
+              "total size.", "archives", "number", "archive", min=1, max=10_000_000),
     FieldInfo("loglevel", "Server log level", "How much the server feed shows.", "advanced",
               "choice", "start",
               _choices(("debug", "Debug"), ("info", "Info"), ("warning", "Warning"),
