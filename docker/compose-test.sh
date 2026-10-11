@@ -11,13 +11,26 @@ export APSUI_WEB_PORT="${APSUI_WEB_PORT:-18080}"
 export APSUI_GAME_PORT="${APSUI_GAME_PORT:-48281}"
 project="apsui-test-$$"
 here=$(cd "$(dirname "$0")/.." && pwd)
-compose() { ${COMPOSE:-docker compose} -p "$project" -f "$here/compose.yaml" "$@"; }
+files="-f $here/compose.yaml"
+if [ "$scale" -gt 1 ]; then
+    # A slow (emulated) run: each healthcheck starts Python, which takes longer than its
+    # 5-second timeout there. Give the checks the same scale, in an override file.
+    slow=$(mktemp)
+    for service in web worker server; do
+        printf '  %s:\n    healthcheck: {interval: %ss, timeout: %ss, start_period: %ss}\n' \
+            "$service" $((6 * scale)) $((5 * scale)) $((30 * scale))
+    done | { echo "services:"; cat; } > "$slow"
+    files="$files -f $slow"
+fi
+# shellcheck disable=SC2086  # $files is a list of arguments
+compose() { ${COMPOSE:-docker compose} -p "$project" $files "$@"; }
 py() { service=$1; shift; compose exec -T "$service" /opt/archipelago-venv/bin/python - "$@"; }
 
 cleanup() {
     status=$?
     if [ "$status" -ne 0 ]; then compose logs --no-color --tail 50 || true; fi
     compose down -v --timeout 5 >/dev/null 2>&1 || true
+    [ -z "${slow:-}" ] || rm -f "$slow"
     exit "$status"
 }
 trap cleanup EXIT
