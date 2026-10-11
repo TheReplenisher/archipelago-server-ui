@@ -12,6 +12,8 @@ const openGame = {
   archivable: false,
 }
 
+const notLoggedIn = { detail: { code: 'not-logged-in', message: 'Log in with your slot name' } }
+
 /** Answers /api/health with `health` and /api/game like a fresh install. */
 function stubHealth(health: () => Promise<Response>) {
   const fetchMock = vi.fn((input: RequestInfo | URL) => {
@@ -23,6 +25,7 @@ function stubHealth(health: () => Promise<Response>) {
     if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
     if (url === '/api/uploads') return Promise.resolve(Response.json([]))
     if (url === '/api/archives') return Promise.resolve(Response.json(noArchives))
+    if (url === '/api/slot') return Promise.resolve(Response.json(notLoggedIn, { status: 401 }))
     return health()
   })
   vi.stubGlobal('fetch', fetchMock)
@@ -1051,5 +1054,95 @@ describe('archives', () => {
         .map(([, init]) => JSON.parse(String(init?.body)) as unknown)
       expect(bodies).toEqual([{ current: null }, { current: 'archive' }])
     })
+  })
+})
+
+describe('player page', () => {
+  const view = {
+    slot: { name: 'Knight', game: 'APQuest', team: 0, slot: 1 },
+    live: true,
+    goal: false,
+    hint_points: 5,
+    checked: 1,
+    locations: 3,
+    received: [{ item: 'Sword', player: 'Hornet', location: 'Cave', flags: 1 }],
+    unreceived: null,
+    unreceived_rule: 'goal',
+    unchecked: ['Chest B', 'Chest C'],
+    hints: [
+      {
+        item: 'Key',
+        receiving: 'Knight',
+        finding: 'Hornet',
+        location: 'Cave',
+        entrance: '',
+        found: false,
+        status: 'priority',
+        flags: 1,
+      },
+    ],
+  }
+
+  it('logs in with the slot name and room password, then shows the slot', async () => {
+    let loggedIn = false
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/slot/login') {
+        const body = JSON.parse(String(init?.body)) as { name: string; password: string }
+        if (body.password !== 'room pw')
+          return Promise.resolve(
+            Response.json({ detail: { code: 'login-refused', message: 'wrong' } }, { status: 401 }),
+          )
+        loggedIn = true
+        return Promise.resolve(Response.json({ name: body.name }))
+      }
+      if (url === '/api/slot')
+        return Promise.resolve(
+          loggedIn ? Response.json(view) : Response.json(notLoggedIn, { status: 401 }),
+        )
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/player')
+
+    await userEvent.type(await screen.findByLabelText(/Slot name/), 'Knight')
+    await userEvent.type(screen.getByLabelText('Room password'), 'nope')
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
+    expect(await screen.findByText('That slot name or room password is wrong.')).toBeInTheDocument()
+
+    await userEvent.clear(screen.getByLabelText('Room password'))
+    await userEvent.type(screen.getByLabelText('Room password'), 'room pw')
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
+    expect(await screen.findByRole('heading', { name: 'Knight' })).toBeInTheDocument()
+    expect(screen.getByText('1 of 3 locations checked · 5 hint points')).toBeInTheDocument()
+    expect(screen.getByText('Sword')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /Still out there/ }))
+    expect(await screen.findByText(/Shown once you reach your goal/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /Hints/ }))
+    expect(await screen.findByText('priority')).toBeInTheDocument()
+  })
+
+  it('tells the player to contact the admin while the server is stopped', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/slot/login')
+        return Promise.resolve(
+          Response.json(
+            { detail: { code: 'server-stopped', message: 'The server is stopped' } },
+            { status: 503 },
+          ),
+        )
+      if (url === '/api/slot') return Promise.resolve(Response.json(notLoggedIn, { status: 401 }))
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/player')
+
+    await userEvent.type(await screen.findByLabelText(/Slot name/), 'Knight')
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
+    expect(
+      await screen.findByRole('heading', { name: 'The server is stopped' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Please reach out to your admin/)).toBeInTheDocument()
   })
 })

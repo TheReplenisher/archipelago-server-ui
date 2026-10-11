@@ -14,6 +14,7 @@ from apsui.db import make_engine, make_sessionmaker
 from apsui.generation import finish_generation
 from apsui.jobs import JobQueue
 from apsui.same_origin import SameOriginGuard
+from apsui.slots import SlotViews
 from apsui.spa import SPAStaticFiles
 from apsui.uploads import finish_yaml
 
@@ -51,10 +52,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await asyncio.sleep(settings.job_poll_interval)
 
         collector = asyncio.create_task(collect_jobs())
+        app.state.slot_views = slot_views = SlotViews(settings)
         try:
             yield
         finally:
             collector.cancel()
+            await slot_views.close()
             engine.dispose()
 
     app = FastAPI(title="Archipelago Server UI", version=__version__, lifespan=lifespan)

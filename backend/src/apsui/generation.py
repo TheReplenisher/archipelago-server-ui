@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from apsui import console, host_settings
+from apsui import console, host_settings, slot_items
 from apsui.apworlds import library_path
 from apsui.config import Settings
 from apsui.jobs import JobQueue, safe_output_files
@@ -153,6 +153,9 @@ def _finish(
     names = safe_output_files(job_dir).get(console.NAMES_FILE)
     if names is not None:
         console.store_names(names, target_dir)
+    pool = safe_output_files(job_dir).get(slot_items.SLOT_ITEMS_FILE)
+    if pool is not None:
+        slot_items.store(pool, target_dir)
     generation.status, generation.finished_at = "ok", datetime.now(UTC)
     generation.seed_name, generation.output_file = output.seed_name, output.zip
     generation.players = output.players

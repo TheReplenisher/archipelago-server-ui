@@ -1,5 +1,6 @@
 """The server supervisor: owns MultiServer and answers the web service on the control
-socket (#70, #24).
+socket (#70, #24), and relays the web service's Archipelago connections to MultiServer
+over a second socket (#30).
 
 Operations: status, start, stop, save, command. MultiServer is driven through its own
 console on stdin (/save, /exit, and the admin's own lines with command), so no
@@ -30,6 +31,7 @@ from typing import Any
 
 from apsui_server.commands import REFUSED
 from apsui_server.protocol import (
+    DEFAULT_RELAY_SOCKET,
     DEFAULT_SOCKET,
     MAX_MESSAGE_BYTES,
     PROTOCOL_VERSION,
@@ -50,6 +52,9 @@ LOG_TAIL_LINES = 40
 READY_MARKER = "Hosting game at"
 IDLE_MARKER = "Shutting down due to inactivity"  # auto_shutdown (#25)
 MAX_COMMAND_CHARS = 1000
+MAX_RELAYS = 64
+"""Concurrent Archipelago connections from the web service: one per slot being viewed."""
+RELAY_CHUNK = 64 * 1024
 
 
 def error(code: str, message: str) -> dict[str, Any]:
@@ -81,6 +86,7 @@ class Supervisor:
         self.exit_code: int | None = None
         self.log_tail: collections.deque[str] = collections.deque(maxlen=LOG_TAIL_LINES)
         self._tasks: set[asyncio.Task[None]] = set()
+        self._relays = 0
 
     async def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         op = request.get("op")
@@ -215,6 +221,25 @@ class Supervisor:
             log.warning("MultiServer exited unexpectedly with %s", self.exit_code)
             self.state = "crashed"
 
+    async def relay(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        """Pipe one connection from the relay socket to MultiServer's game port, while it
+        runs. The web service speaks the Archipelago protocol over it, as any client."""
+        try:
+            if self.state != "running" or self._relays >= MAX_RELAYS:
+                return
+            try:
+                async with asyncio.timeout(5):
+                    up_reader, up_writer = await asyncio.open_connection("127.0.0.1", self.port)
+            except (OSError, TimeoutError):
+                return
+            self._relays += 1
+            try:
+                await _pipe(reader, writer, up_reader, up_writer)
+            finally:
+                self._relays -= 1
+        finally:
+            writer.close()
+
     def _spawn(self, coro: Any) -> None:
         task = asyncio.create_task(coro)
         self._tasks.add(task)
@@ -226,8 +251,39 @@ class Supervisor:
             await self.stop()
 
 
+async def _pipe(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    up_reader: asyncio.StreamReader,
+    up_writer: asyncio.StreamWriter,
+) -> None:
+    """Copy both ways until either side closes, then close both."""
+
+    async def copy(source: asyncio.StreamReader, sink: asyncio.StreamWriter) -> None:
+        with contextlib.suppress(ConnectionError):
+            while data := await source.read(RELAY_CHUNK):
+                sink.write(data)
+                await sink.drain()
+
+    tasks = [
+        asyncio.create_task(copy(reader, up_writer)),
+        asyncio.create_task(copy(up_reader, writer)),
+    ]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in tasks:
+            task.cancel()
+        up_writer.close()
+        with contextlib.suppress(ConnectionError):
+            await up_writer.wait_closed()
+
+
 async def serve(
-    socket_path: Path, supervisor: Supervisor, ready: asyncio.Event | None = None
+    socket_path: Path,
+    supervisor: Supervisor,
+    ready: asyncio.Event | None = None,
+    relay_path: Path | None = None,
 ) -> None:
     async def connection(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         try:
@@ -243,19 +299,24 @@ async def serve(
             with contextlib.suppress(ConnectionError):
                 await writer.wait_closed()
 
+    relay_path = relay_path or socket_path.with_name("ap.sock")
     _prepare(socket_path)
+    _prepare(relay_path)
     server = await asyncio.start_unix_server(
         connection, path=str(socket_path), limit=MAX_MESSAGE_BYTES
     )
+    relay = await asyncio.start_unix_server(supervisor.relay, path=str(relay_path))
     os.chmod(socket_path, SOCKET_MODE)
-    log.info("control socket listening at %s", socket_path)
+    os.chmod(relay_path, SOCKET_MODE)
+    log.info("control socket listening at %s, relay at %s", socket_path, relay_path)
     if ready is not None:
         ready.set()
     try:
-        async with server:
-            await server.serve_forever()
+        async with server, relay:
+            await asyncio.gather(server.serve_forever(), relay.serve_forever())
     finally:
         _remove(socket_path)
+        _remove(relay_path)
 
 
 # Quick local filesystem calls, kept out of the coroutines.
@@ -268,8 +329,8 @@ def _remove(socket_path: Path) -> None:
     socket_path.unlink(missing_ok=True)
 
 
-async def run(socket_path: Path, supervisor: Supervisor) -> None:
-    task = asyncio.create_task(serve(socket_path, supervisor))
+async def run(socket_path: Path, supervisor: Supervisor, relay_path: Path) -> None:
+    task = asyncio.create_task(serve(socket_path, supervisor, relay_path=relay_path))
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, task.cancel)
@@ -284,6 +345,11 @@ def main() -> None:
         "--socket", type=Path, default=Path(os.environ.get("APSUI_CONTROL_SOCKET", DEFAULT_SOCKET))
     )
     parser.add_argument(
+        "--relay-socket",
+        type=Path,
+        default=Path(os.environ.get("APSUI_RELAY_SOCKET", DEFAULT_RELAY_SOCKET)),
+    )
+    parser.add_argument(
         "--game-dir", type=Path, default=Path(os.environ.get("APSUI_GAME_DIR", "/data/game"))
     )
     parser.add_argument(
@@ -295,7 +361,7 @@ def main() -> None:
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     supervisor = Supervisor(args.game_dir, args.archipelago_dir, args.port)
-    asyncio.run(run(args.socket, supervisor))
+    asyncio.run(run(args.socket, supervisor, args.relay_socket))
 
 
 if __name__ == "__main__":
