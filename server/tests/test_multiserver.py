@@ -19,7 +19,7 @@ import os, sys
 from pathlib import Path
 seen = Path(os.environ["XDG_DATA_HOME"]) / "commands.txt"
 seen.parent.mkdir(parents=True, exist_ok=True)
-print("Loading worlds", flush=True)
+print("Loading worlds with", " ".join(sys.argv[2:]), flush=True)
 if "crash" in sys.argv[1]:
     print("Failed to read multiworld data", flush=True)
     sys.exit(3)
@@ -97,9 +97,9 @@ async def test_start_save_stop(make: Callable[..., Supervisor], tmp_path: Path) 
     # Stop saves first, then exits; the custom worlds folder is the game's.
     commands = (tmp_path / "game" / "ap" / "commands.txt").read_text().split()
     assert commands == ["/save", "/save", "/exit"]
-    assert (
-        "Hosting game at 0.0.0.0:38999" in (tmp_path / "game" / "logs" / "server.log").read_text()
-    )
+    log = (tmp_path / "game" / "logs" / "server.log").read_text()
+    assert "Hosting game at 0.0.0.0:38999" in log
+    assert "Loading worlds with --host 0.0.0.0 --port 38999 --logtime" in log
 
 
 @sync

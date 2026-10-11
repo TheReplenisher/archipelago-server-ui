@@ -56,6 +56,9 @@ class Settings(BaseSettings):
             return value.rsplit(":", 1)[1]
         return value
 
+    feed_poll_interval: float = 0.5
+    """Seconds between checks of MultiServer's log for the server feed."""
+
     command_catalog: Path | None = Path("/opt/apsui/commands.json")
     """The admin console's command catalog, built into the image (#26). Without it the
     console offers free text only."""

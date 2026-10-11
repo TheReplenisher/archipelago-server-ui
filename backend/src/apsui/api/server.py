@@ -1,11 +1,14 @@
+import asyncio
+import contextlib
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from apsui_server.protocol import ControlError
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from apsui import hosting
+from apsui import feed, hosting
 from apsui.config import Settings
 from apsui.db import get_session
 from apsui.server_control import request
@@ -72,3 +75,46 @@ async def send_command(
         raise HTTPException(exc.status, detail={"code": exc.code, "message": exc.message}) from exc
     fields = {k: v for k, v in response.items() if k in ServerStatus.model_fields}
     return ServerStatus.model_validate(fields | {"reachable": True})
+
+
+def _same_origin(websocket: WebSocket) -> bool:
+    """Browsers let any page open a WebSocket anywhere, so one from another site (which
+    sends its Origin) is refused: the feed holds the room password. Clients that aren't
+    browsers send no Origin."""
+    origin = websocket.headers.get("origin")
+    if origin is None:
+        return True
+    return urlsplit(origin).netloc.lower() == websocket.headers.get("host", "").lower()
+
+
+@router.websocket("/server/feed")
+async def server_feed(websocket: WebSocket) -> None:
+    """MultiServer's output, live: {"reset": true, "lines": [...]} with the scrollback
+    first (and again when a new log starts), then {"reset": false, "lines": [...]} as
+    lines are written."""
+    if not _same_origin(websocket):
+        await websocket.close(code=1008)  # policy violation
+        return
+    await websocket.accept()
+    settings: Settings = websocket.app.state.settings
+    follower = feed.Follower(feed.server_log(settings))
+
+    async def follow() -> None:
+        await websocket.send_json({"reset": True, "lines": follower.scrollback()})
+        while True:
+            await asyncio.sleep(settings.feed_poll_interval)
+            reset, lines = follower.poll()
+            if reset or lines:
+                await websocket.send_json({"reset": reset, "lines": lines})
+
+    async def until_closed() -> None:
+        while (await websocket.receive())["type"] != "websocket.disconnect":
+            pass
+
+    tasks = [asyncio.create_task(follow()), asyncio.create_task(until_closed())]
+    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+    for task in done:
+        with contextlib.suppress(WebSocketDisconnect):  # it left mid-send
+            task.result()

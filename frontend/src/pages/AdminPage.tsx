@@ -3,6 +3,7 @@ import { IconAlertTriangle } from '@tabler/icons-react'
 import { Apworlds } from '../components/Apworlds'
 import { BackendStatus } from '../components/BackendStatus'
 import { CurrentGame } from '../components/CurrentGame'
+import { ServerFeed } from '../components/ServerFeed'
 import { UploadLog } from '../components/UploadLog'
 import { Uploads } from '../components/Uploads'
 
@@ -15,13 +16,12 @@ export function AdminPage() {
         the internet.
       </Alert>
       <CurrentGame />
+      <ServerFeed />
       <Uploads />
       <Apworlds />
       <UploadLog />
       <BackendStatus />
-      <Text c="dimmed">
-        The settings, server feed and archives will appear here as Alpha 1 is built.
-      </Text>
+      <Text c="dimmed">The settings and archives will appear here as Alpha 1 is built.</Text>
     </Stack>
   )
 }
