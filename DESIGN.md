@@ -229,8 +229,8 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
 
 - **The worker runs Archipelago's own `Generate` and `Main`** (the `generate` job) on the
   accepted YAMLs, each named `<upload id>.yaml`, plus the library apworld each game is
-  locked to. It has up to an hour (the worker's maximum). Settings are AP's defaults
-  (full spoiler, plando bosses/connections/texts) until the settings page exists (#25).
+  locked to. It has up to an hour (the worker's maximum). Its settings (spoiler, race,
+  plando, panic method) come from the settings page (#25).
 - **The output zip goes to `/data/game/output/`,** where the server service will host it
   (#24). It is checked first: one plain file named `AP_<seed>.zip` that really is a zip.
   The worker can't put anything else there.
@@ -270,8 +270,9 @@ Steps 3–4 import world code, so they run **in the worker** (the `validate-yaml
   or **cancels**, which rejects it so a fixed file has to be uploaded. Problems a new
   name can't fix (bad options, unknown game, slot limit) still reject outright.
 - **Unknown option names are warnings, not errors,** as in Archipelago itself.
-- **`quantity` above 1 is rejected** until `allow_quantity` exists on the settings page
-  (#25); with fixed names it could never be unique anyway.
+- **`quantity` above 1 is rejected** unless *Allow quantity* is on in the settings (#25);
+  each of those slots then counts toward the slot limit. (With a fixed name, a quantity
+  above 1 could never be unique anyway.)
 - **Names and the slot limit are checked by the web service** when the job finishes, since
   they depend on the other uploads. Names are compared without case, as Archipelago does.
 - **The accepted file is always the admin's own bytes,** kept in web-only storage while it
@@ -316,8 +317,9 @@ Decided while building it (#21):
   whose game is already loaded. So the import test unregisters the built-in world in its
   own process, then loads the apworld the way AP does. Validation, generation and the
   server need the same treatment before a replacement can be used (#77).
-- **The approval setting** is `APSUI_APWORLD_APPROVAL` (`manual` or `auto`) until the
-  settings page exists (#25). The uploader is always the admin in Alpha 1.
+- **The approval setting** (`manual` or `auto`) is on the settings page (#25);
+  `APSUI_APWORLD_APPROVAL` is only its default. The uploader is always the admin in
+  Alpha 1.
 - **YAMLs can't use library apworlds yet:** picking a version and locking it is #22.
 
 ### The apworld library
@@ -518,6 +520,31 @@ Decided while building it (#23):
 - **Belong to Future features:**
   - per-game sections (ROM paths) go with ROM uploads
   - `meta.yaml` goes with generation presets
+- Decided while building it (#25):
+  - **Stored in app.db,** validated (each choice from AP's own list, numbers in range,
+    passwords a single line), with AP's defaults except `disable_item_cheat`. The upload
+    rules from §4 join them: the **slot limit** and **apworld approval**, whose install
+    environment variables (`APSUI_MAX_SLOTS`, `APSUI_APWORLD_APPROVAL`) are now only the
+    defaults.
+  - **The server reads them from host.yaml:** before each start, the web service writes
+    the server settings as `server_options` into the server's own Archipelago user folder
+    (`/data/game/ap/Archipelago/host.yaml`, where a read-only install looks), and
+    removes any `options.yaml` there, which AP would read first. MultiServer takes its
+    defaults from it; the supervisor's own flags (`--host`, `--port`, `--logtime`) still
+    win.
+  - **Live ⚡ settings** that change while the server runs are also sent as `/option`
+    lines through the console (#26), and the page says which reached the server. Two
+    spellings differ from host.yaml's: `disable_item_cheat` is `/option item_cheat` (the
+    inverse), and `auto-enabled` is sent as `auto_enabled`, which `/option` accepts and
+    AP reads the same way.
+  - **Generation settings** go into each generate job's parameters; `panic_method`,
+    which AP reads only from host.yaml, is written to the job's own user folder. The YAML
+    checks use the same plando options.
+  - **`auto_shutdown`:** when MultiServer stops itself after its idle time ("Shutting
+    down due to inactivity", exit 0), the server shows as *idle*, not crashed; Stop then
+    Start resumes from the save.
+  - **`port` is shown by the install, not set here:** under Compose the container's port
+    is fixed and the published one is `APSUI_GAME_PORT` (README); LXC (#14) can revisit.
 
 ### Patch files
 

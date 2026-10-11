@@ -50,6 +50,13 @@ function ServerLine({ server }: { server: ServerStatus }) {
         The server service isn't answering.
       </Text>
     )
+  if (server.state === 'idle')
+    return (
+      <Text size="sm" c="orange">
+        The server stopped itself after its idle time (see Settings). Stop it, then Start to resume
+        from the save.
+      </Text>
+    )
   if (server.state === 'crashed')
     return (
       <Alert color="red" title={`The server stopped unexpectedly (exit code ${server.exit_code})`}>

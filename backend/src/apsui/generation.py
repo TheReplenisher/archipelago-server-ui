@@ -21,20 +21,18 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from apsui import console
+from apsui import console, host_settings
 from apsui.apworlds import library_path
 from apsui.config import Settings
 from apsui.jobs import JobQueue, safe_output_files
 from apsui.lifecycle import Action, GameState, TransitionError, apply, current_game
 from apsui.models import Game, Generation, Job, Slot, Upload
-from apsui.uploads import VALIDATE_PARAMS, accepted_path
+from apsui.uploads import accepted_path
 from apsui.worlds import locks
 
 log = logging.getLogger(__name__)
 
 GENERATE_TIMEOUT = 3600
-# Generation settings come from the settings page with #25; these are AP's defaults.
-GENERATE_PARAMS = {"plando_options": VALIDATE_PARAMS["plando_options"], "spoiler": 3}
 _UPLOAD_FILE = re.compile(r"\b(\d+)\.yaml\b")
 
 
@@ -84,7 +82,11 @@ def start(session: Session, jobs: JobQueue, settings: Settings) -> Generation:
     session.commit()
     try:
         job = jobs.submit(
-            session, "generate", params=GENERATE_PARAMS, inputs=inputs, timeout=GENERATE_TIMEOUT
+            session,
+            "generate",
+            params=host_settings.generate_params(host_settings.load(session, settings)),
+            inputs=inputs,
+            timeout=GENERATE_TIMEOUT,
         )
     except Exception:
         log.exception("submitting generation for game %s failed", game.id)

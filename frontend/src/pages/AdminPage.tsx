@@ -21,7 +21,7 @@ export function AdminPage() {
       <Apworlds />
       <UploadLog />
       <BackendStatus />
-      <Text c="dimmed">The settings and archives will appear here as Alpha 1 is built.</Text>
+      <Text c="dimmed">Archives will appear here as Alpha 1 is built.</Text>
     </Stack>
   )
 }

@@ -23,6 +23,10 @@ print("Loading worlds with", " ".join(sys.argv[2:]), flush=True)
 if "crash" in sys.argv[1]:
     print("Failed to read multiworld data", flush=True)
     sys.exit(3)
+if "idle" in sys.argv[1]:
+    print("Hosting game at 0.0.0.0:1", flush=True)
+    print("Shutting down due to inactivity.", flush=True)
+    sys.exit(0)
 print("Hosting game at 0.0.0.0:" + sys.argv[sys.argv.index("--port") + 1], flush=True)
 for line in sys.stdin:
     command = line.strip()
@@ -132,6 +136,16 @@ async def test_a_crash_is_reported_with_the_log(make: Callable[..., Supervisor])
     assert status["exit_code"] == 3
     assert "Failed to read multiworld data" in status["log_tail"]
     # Stopping a crashed server just clears it.
+    assert (await supervisor.handle({"op": "stop"}))["state"] == "stopped"
+
+
+@sync
+async def test_an_idle_shutdown_is_not_a_crash(make: Callable[..., Supervisor]) -> None:
+    """auto_shutdown: MultiServer stops itself with no new checks for a while."""
+    supervisor = make("AP_idle.zip")
+    await supervisor.handle({"op": "start"})
+    status = await until(supervisor, "idle")
+    assert status["exit_code"] == 0
     assert (await supervisor.handle({"op": "stop"}))["state"] == "stopped"
 
 

@@ -4,7 +4,7 @@ on the game's accepted YAMLs with its locked custom apworlds.
 Input: <upload id>.yaml for every accepted YAML, and <module>.apworld for every game
 locked to a library apworld.
 Params: plando_options (str, default AP's), spoiler (int 0-3, default 3), race (bool),
-        seed (int or null).
+        panic_method (swap, raise or start_inventory; default swap), seed (int or null).
 Output: {"archipelago_version", "seed", "seed_name", "zip", "players": [slot names]},
         output/<zip>, the file MultiServer hosts, and output/names.json: each slot's
         number, name and game, and each game's item and location names (its data
@@ -22,11 +22,20 @@ if TYPE_CHECKING:
     from apsui_worker.jobs import JobContext
 
 
+PANIC_METHODS = ("swap", "raise", "start_inventory")
+
+
 def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
     from apsui_worker.archipelago import custom_worlds_dir
     from apsui_worker.jobs import JobFailure
 
     custom = custom_worlds_dir()
+    panic_method = str(params.get("panic_method", "swap"))
+    if panic_method not in PANIC_METHODS:
+        raise JobFailure("bad-params", f"Unknown panic_method {panic_method!r}")
+    # AP reads this one only from host.yaml, in its user folder (this job's, here).
+    host_yaml = f"generator:\n  panic_method: {json.dumps(panic_method)}\n"
+    (custom.parent / "host.yaml").write_text(host_yaml, encoding="utf-8")
     for apworld in sorted(ctx.input_dir.glob("*.apworld")):
         shutil.copy2(apworld, custom / apworld.name)
     # The job folder is writable; AP reads player files from a folder of its own.

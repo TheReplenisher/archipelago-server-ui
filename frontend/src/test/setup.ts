@@ -29,6 +29,7 @@ class ResizeObserverStub {
   disconnect() {}
 }
 window.ResizeObserver = ResizeObserverStub
+Element.prototype.scrollIntoView = () => {}
 
 // The server feed opens a WebSocket; tests that look at it stub their own.
 class InertWebSocket {
