@@ -12,6 +12,7 @@ import {
 } from '@mantine/core'
 import { IconUpload } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
+import { ErrorCode } from './ErrorCode'
 import { FixNamesModal } from './FixNamesModal'
 import {
   listApworlds,
@@ -171,7 +172,8 @@ export function Uploads() {
                     <Table.Td>
                       {u.status === 'rejected' ? (
                         <Text size="sm" c="red">
-                          {u.error_message}
+                          {u.error_message}{' '}
+                          {u.error_code && <ErrorCode kind="yaml" id={u.id} code={u.error_code} />}
                         </Text>
                       ) : u.status === 'needs-name' ? (
                         <Text size="sm" c="orange">

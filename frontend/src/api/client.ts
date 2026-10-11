@@ -167,3 +167,49 @@ export function uploadApworld(file: File) {
 
 export const approveApworld = (id: number) => postJson<Apworld>(`/apworlds/${id}/approve`)
 export const rejectApworld = (id: number) => postJson<Apworld>(`/apworlds/${id}/reject`)
+
+export type UploadKind = 'yaml' | 'apworld'
+
+export interface LogEntry {
+  kind: UploadKind
+  id: number
+  /** `<kind>-<id>`: what an error code links to. */
+  key: string
+  filename: string
+  sha256: string
+  size: number
+  status: string
+  error_code: string | null
+  error_message: string | null
+  uploaded_by: string
+  uploaded_at: string
+  game_id: number | null
+}
+
+export interface LogCheck {
+  name: string
+  status: 'ok' | 'failed' | 'warning' | 'waiting'
+  message: string
+  detail: string | null
+}
+
+export interface LogDetail extends LogEntry {
+  checks: LogCheck[]
+  job: {
+    id: string
+    type: string
+    status: string
+    submitted_at: string
+    finished_at: string | null
+    error_code: string | null
+    error_message: string | null
+    traceback: string | null
+    log_tail: string | null
+  } | null
+}
+
+export const listUploadLog = (signal?: AbortSignal) =>
+  getJson<LogEntry[]>('/logs/uploads', { signal })
+
+export const getUploadLog = (kind: UploadKind, id: number, signal?: AbortSignal) =>
+  getJson<LogDetail>(`/logs/uploads/${kind}/${id}`, { signal })

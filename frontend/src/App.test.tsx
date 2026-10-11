@@ -18,6 +18,7 @@ function stubHealth(health: () => Promise<Response>) {
     if (url === '/api/game') return Promise.resolve(Response.json(openGame))
     if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
     if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+    if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
     if (url === '/api/uploads') return Promise.resolve(Response.json([]))
     return health()
   })
@@ -81,6 +82,7 @@ describe('current game', () => {
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
       return okHealth()
     })
@@ -110,6 +112,7 @@ describe('current game', () => {
         if (url === '/api/game') return Promise.resolve(Response.json(openGame))
         if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
         if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+        if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
         if (url === '/api/uploads') return Promise.resolve(Response.json([]))
         return okHealth()
       }),
@@ -153,6 +156,7 @@ describe('uploads', () => {
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       return okHealth()
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -190,6 +194,7 @@ describe('uploads', () => {
         if (url === '/api/game') return Promise.resolve(Response.json(openGame))
         if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
         if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+        if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
         return okHealth()
       }),
     )
@@ -229,6 +234,7 @@ describe('fixing slot names', () => {
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([]))
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       return okHealth()
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -329,6 +335,7 @@ describe('apworld approval', () => {
       if (url === '/api/apworlds') return Promise.resolve(Response.json([pending]))
       if (url === '/api/apworlds/7') return Promise.resolve(Response.json(detail))
       if (url === '/api/worlds') return Promise.resolve(Response.json([]))
+      if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/game') return Promise.resolve(Response.json(openGame))
       return okHealth()
@@ -381,6 +388,7 @@ describe('custom apworlds for a YAML', () => {
       const url = String(input)
       if (init?.method === 'POST') return Promise.resolve(Response.json({}, { status: 202 }))
       if (url === '/api/apworlds') return Promise.resolve(Response.json([approved]))
+      if (url === '/api/logs/uploads') return Promise.resolve(Response.json([]))
       if (url === '/api/worlds')
         return Promise.resolve(
           Response.json([
@@ -416,5 +424,63 @@ describe('custom apworlds for a YAML', () => {
     )
     const [, init] = fetchMock.mock.calls.find(([u]) => String(u) === '/api/uploads/yaml')!
     expect((init!.body as FormData).getAll('apworld_ids')).toEqual(['4'])
+  })
+})
+
+describe('upload log', () => {
+  it('opens the full log entry from a short error code', async () => {
+    const rejected = {
+      id: 5,
+      kind: 'yaml',
+      filename: 'bad.yaml',
+      status: 'rejected',
+      uploaded_at: '2026-10-10T00:00:00Z',
+      checked_at: '2026-10-10T00:00:01Z',
+      error_code: 'check-failed',
+      error_message: "The file couldn't be checked; see the upload log",
+      slots: [],
+      name_problems: [],
+    }
+    const entry = {
+      ...rejected,
+      key: 'yaml-5',
+      sha256: 'f'.repeat(64),
+      size: 40,
+      uploaded_by: 'admin',
+      game_id: 1,
+      checks: [
+        { name: 'Stored', status: 'ok', message: '40 bytes', detail: null },
+        { name: 'Worker check', status: 'failed', message: 'Worker job error', detail: null },
+      ],
+      job: {
+        id: 'job-1',
+        type: 'validate-yaml',
+        status: 'error',
+        submitted_at: '2026-10-10T00:00:00Z',
+        finished_at: '2026-10-10T00:00:01Z',
+        error_code: 'exception',
+        error_message: "KeyError: 'x'",
+        traceback: "Traceback (most recent call last):\nKeyError: 'x'",
+        log_tail: null,
+      },
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url === '/api/uploads') return Promise.resolve(Response.json([rejected]))
+        if (url === '/api/logs/uploads') return Promise.resolve(Response.json([entry]))
+        if (url === '/api/logs/uploads/yaml/5') return Promise.resolve(Response.json(entry))
+        if (url === '/api/apworlds' || url === '/api/worlds')
+          return Promise.resolve(Response.json([]))
+        if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+        return okHealth()
+      }),
+    )
+    renderRoute('/admin')
+    const [code] = await screen.findAllByRole('button', { name: 'check-failed' })
+    await userEvent.click(code!)
+    expect(await screen.findByText('Upload log: yaml-5')).toBeInTheDocument()
+    expect(screen.getByText(/Traceback \(most recent call last\)/)).toBeInTheDocument()
   })
 })

@@ -120,6 +120,19 @@ curl -fsS "$base/worlds" | grep -q "\"world\":\"APSUI Test World\",\"label\":\"A
     || { echo "world not locked: $(curl -fsS "$base/worlds")"; exit 1; }
 echo "apworlds: ok"
 
+echo "--- upload log: the real rejection keeps the worker's full detail"
+bad=$(curl -fsS "$base/uploads" | python3 -c 'import json,sys; print(next(u["id"] for u in json.load(sys.stdin) if u["error_code"] == "option-invalid"))')
+curl -fsS "$base/logs/uploads/yaml/$bad" | python3 -c '
+import json, sys
+entry = json.load(sys.stdin)
+failed = [c for c in entry["checks"] if c["status"] == "failed" and c["detail"]]
+assert failed and "player_sprite" in failed[0]["detail"], entry
+assert entry["job"]["type"] == "validate-yaml" and len(entry["sha256"]) == 64, entry
+' || { echo "upload log entry incomplete"; exit 1; }
+[ "$(curl -fsS "$base/logs/uploads" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')" -ge 8 ] \
+    || { echo "upload log is missing entries"; exit 1; }
+echo "upload log: ok"
+
 # Checks run inside every service.
 common_checks='
 import os, sys
