@@ -439,3 +439,38 @@ export const deleteArchive = (id: number) =>
 export const archiveDownloadUrl = (id: number) => `/api/archives/${id}/download`
 export const archiveFileUrl = (id: number, path: string) =>
   `/api/archives/${id}/files/${path.split('/').map(encodeURIComponent).join('/')}`
+
+/** AP's network item flags. */
+export const ITEM_PROGRESSION = 1
+export const ITEM_USEFUL = 2
+export const ITEM_TRAP = 4
+
+export interface SlotView {
+  slot: { name: string; game: string; team: number; slot: number }
+  /** False while the connection to the server is being re-made. */
+  live: boolean
+  goal: boolean
+  hint_points: number
+  checked: number
+  locations: number
+  received: { item: string; player: string; location: string; flags: number }[]
+  /** null when the room's !remaining setting doesn't allow it (yet). */
+  unreceived: { item: string; count: number; flags: number }[] | null
+  unreceived_rule: 'enabled' | 'goal' | 'disabled' | 'unavailable'
+  unchecked: string[]
+  hints: {
+    item: string
+    receiving: string
+    finding: string
+    location: string
+    entrance: string
+    found: boolean
+    status: string
+    flags: number
+  }[]
+}
+
+export const getSlotView = (signal?: AbortSignal) => getJson<SlotView>('/slot', { signal })
+export const slotLogin = (name: string, password: string) =>
+  postJsonBody<{ name: string }>('/slot/login', { name, password })
+export const slotLogout = () => postJson<{ ok: boolean }>('/slot/logout')

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     control_socket: Path = Path("/run/apsui/control.sock")
     """The server supervisor's control socket (#70)."""
 
+    relay_socket: Path = Path("/run/apsui/ap.sock")
+    """The supervisor's relay to MultiServer, for the slot view's Archipelago connections
+    (#30)."""
+
     max_slots: int = 50
     """The default slot limit (DESIGN.md §4), until the admin sets one on the settings
     page (#25)."""

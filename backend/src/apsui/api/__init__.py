@@ -1,6 +1,17 @@
 from fastapi import APIRouter
 
-from apsui.api import apworlds, archives, console, game, health, logs, server, settings, uploads
+from apsui.api import (
+    apworlds,
+    archives,
+    console,
+    game,
+    health,
+    logs,
+    server,
+    settings,
+    slot,
+    uploads,
+)
 
 router = APIRouter(prefix="/api")
 router.include_router(health.router)
@@ -12,3 +23,4 @@ router.include_router(uploads.router)
 router.include_router(apworlds.router)
 router.include_router(logs.router)
 router.include_router(settings.router)
+router.include_router(slot.router)

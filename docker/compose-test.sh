@@ -306,7 +306,39 @@ assert any(l.startswith("[") and "Hosting game at" in l for l in lines), lines[-
 assert any("Cheat console: sending" in l for l in lines), lines[-20:]  # the console's /send
 print(f"server feed: {len(lines)} lines of scrollback")
 PY
+echo "--- slot view: real MultiServer checks the login through the relay; items, locations, hints"
+jar=$(mktemp)
+slot_login() {  # slot_login <name> <password>: prints the HTTP status
+    curl -sS -o /dev/null -w '%{http_code}' -c "$jar" -H 'Content-Type: application/json' \
+        -d "{\"name\":\"$1\",\"password\":\"$2\"}" "$base/slot/login"
+}
+[ "$(slot_login Quester 'wrong pw')" = 401 ] || { echo "a wrong room password was let in"; exit 1; }
+[ "$(slot_login Nobody 'compose pw')" = 401 ] || { echo "an unknown slot was let in"; exit 1; }
+[ "$(slot_login Quester 'compose pw')" = 200 ] || { echo "slot login failed"; exit 1; }
+curl -fsS -b "$jar" "$base/slot" | python3 -c '
+import json, sys
+v = json.load(sys.stdin)
+assert v["slot"]["name"] == "Quester" and v["slot"]["game"] == "APQuest", v["slot"]
+assert v["live"] and v["locations"] > 0 and v["unchecked"], v
+assert not any(l.startswith("Location ") for l in v["unchecked"]), v["unchecked"][:5]  # named
+assert (v["unreceived"], v["unreceived_rule"]) == (None, "goal"), v  # AP default: after goal
+print("slot view:", v["locations"], "locations,", len(v["received"]), "received")' \
+    || { echo "slot view wrong"; exit 1; }
+settings '{"remaining_mode": "enabled"}' >/dev/null
+curl -fsS -b "$jar" "$base/slot" | python3 -c '
+import json, sys
+v = json.load(sys.stdin)
+assert v["unreceived_rule"] == "enabled" and v["unreceived"], v  # the whole pool is still out
+assert all(u["count"] >= 1 and not u["item"].startswith("Item ") for u in v["unreceived"]), v' \
+    || { echo "unreceived items not shown"; exit 1; }
+py server <<'PY' || { echo "the tracker never reached MultiServer"; exit 1; }
+assert "Quester (Team #1) tracking APQuest has joined" in open("/data/game/logs/server.log").read()
+PY
+echo "slot view: ok"
 curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
+[ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$jar" "$base/slot")" = 503 ] \
+    || { echo "slot view while stopped isn't 503"; exit 1; }
+rm -f "$jar"
 curl -fsS "$base/server" | grep -q '"state":"stopped"' || { echo "server not stopped"; exit 1; }
 echo "server control: ok"
 

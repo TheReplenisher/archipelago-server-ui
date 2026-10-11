@@ -9,7 +9,7 @@ items and hints, and finished games are archived.
 > **Status: Alpha 1 in progress.** The admin can run a game end to end: upload and check
 > YAMLs and apworlds, generate, start, save and stop the server, send it commands from the
 > console, watch its output in the server feed, change its settings, and archive and
-> restore games. The slot view is still to come. See [DESIGN.md](DESIGN.md) for the plan and
+> restore games, and players can follow their own slot. See [DESIGN.md](DESIGN.md) for the plan and
 > [ROADMAP.md](ROADMAP.md) for what comes when.
 
 **Unofficial.** This project is not affiliated with or endorsed by the Archipelago project.
@@ -91,6 +91,12 @@ Everything is on the **Admin** tab.
    into an archive, and a new game opens for uploads. Under **Archives** you can browse an
    archive, download it as a zip, delete it, or **Restore** it as the current game; if
    the current game has anything in it, you choose to archive or delete it first.
+
+Players use the **Player** tab while the server runs: their slot name and the room
+password (as in their game client) show the items they've received, the locations they
+haven't checked, their hints, and, as the room's `!remaining` setting allows, the items
+still out there. Nothing shows where an item is unless a hint says so. While the server is
+stopped, the tab says so and asks them to contact you.
 
 The **Settings** tab holds the server's host.yaml settings (room password, release and
 collect, hints, idle stop), the generation settings (spoiler, race, plando), the upload

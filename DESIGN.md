@@ -113,8 +113,9 @@ It learns what it needs through the AP network protocol and from files the worke
 - **The web service and the server share no network.** The web service talks to the
   server's supervisor through a **Unix socket** in `/run/apsui` (decided in #70): no
   listening port, and filesystem permissions are the authentication. The web service's own
-  Archipelago-protocol connections (observer feed, slot logins) will go through a second
-  socket there that the supervisor relays to MultiServer (#24, #27, #30). So code in the
+  Archipelago-protocol connections (slot logins, #30; the player feed later) go through a
+  second socket there, `/run/apsui/ap.sock`, which the supervisor pipes to MultiServer's
+  game port while it runs. So code in the
   server container has **no route to the web API** — checked by `docker/compose-test.sh`,
   by name and by address.
 - **Healthchecks:** web `/api/health`; worker a heartbeat file it updates every few seconds,
@@ -634,8 +635,9 @@ Decided while building it (#23):
   (see ROADMAP).
 - **Credentials are checked against the running AP server** over the AP protocol, so the
   web app never stores its own copy of slot credentials.
-  - While the server is stopped, the slot view shows the last known state, marked
-    stale, and no new logins are accepted. *(Open question — confirm during Alpha 1.)*
+  - **While the server is stopped** there is no slot view and no login: the player sees a
+    page saying the server is stopped and to reach out to the admin (conne's decision,
+    2026-10-11). It picks up again by itself once the server is back.
 
 ### Slot view
 
@@ -650,6 +652,35 @@ Decided while building it (#23):
 
 The tracker data comes from an AP-protocol connection made as that slot with the
 `Tracker` tag. It uses the official protocol, never AP's internal files.
+
+Decided while building it (#30):
+
+- **The login is a real connection:** `Connect` as the slot with the `Tracker` tag and no
+  game, through the relay socket. MultiServer's own answer decides (`InvalidSlot`,
+  `InvalidPassword`); with no room password set, any password passes, as in AP. Names
+  are matched exactly, as MultiServer does.
+- **Sessions live in the web service's memory:** a random token in a cookie (`HttpOnly`,
+  `SameSite=Strict`, path `/api/slot`, `Secure` behind HTTPS), the slot name and the
+  password the player typed, never written to disk. A web restart logs players out; a
+  session ends after 12 idle hours, or when a new game is generated (it is bound to the
+  seed). Logins are limited to 10 a minute per client address.
+- **One connection per slot,** shared by its sessions, closed after 10 idle minutes and
+  opened again on the next view. Each new one is announced to every player ("Knight
+  (Team #1) tracking … has joined"), and like any tracker it marks a slot that never
+  connected as *connected*. If the password stops working (changed live), the session
+  ends.
+- **The view is polled** every 3 seconds; the connection keeps it current in between
+  (`ReceivedItems`, `RoomUpdate`, and `SetNotify` on the slot's hints and status).
+- **Unreceived items** need the slot's whole item pool, which only generation knows: the
+  generate job writes `slot_items.json` (each slot's items by name, count and flags,
+  never where), kept beside the output like `names.json`. The view subtracts what the
+  slot has received. **It follows the room's `!remaining` setting** (conne's decision,
+  2026-10-11): *enabled* shows the list, *goal* (AP's default) once the slot has reached
+  its goal, *disabled* never.
+- **Unchecked locations** are the slot's `missing_locations`, by name; what they hold is
+  never asked for (no `LocationScouts`).
+- **Everything MultiServer sends is untrusted** (it runs apworld code): messages are
+  limited to 64 MB and read field by field.
 
 ### Player commands (Beta)
 

@@ -13,6 +13,9 @@ import json
 from typing import Any
 
 DEFAULT_SOCKET = "/run/apsui/control.sock"
+DEFAULT_RELAY_SOCKET = "/run/apsui/ap.sock"
+"""The web service's Archipelago-protocol connections (slot views, #30): each connection to
+it is piped to MultiServer's game port, so the web and server services share no network."""
 MAX_MESSAGE_BYTES = 64_000
 
 PROTOCOL_VERSION = 1

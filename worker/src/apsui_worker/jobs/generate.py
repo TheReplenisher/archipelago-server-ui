@@ -10,7 +10,10 @@ Output: {"archipelago_version", "seed", "seed_name", "zip", "players": [slot nam
         "custom_worlds": {game: world version} for the worlds that came from apworlds},
         output/<zip>, the file MultiServer hosts, and output/names.json: each slot's
         number, name and game, and each game's item and location names (its data
-        package), for the admin console's searchable lists (#26).
+        package), for the admin console's searchable lists (#26); and
+        output/slot_items.json: every item each slot receives in the whole multiworld, by
+        name, with its count and flags, never where it is. The slot view (#30) subtracts
+        what the slot has received to show what is still out there.
 """
 
 from __future__ import annotations
@@ -85,6 +88,8 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
     shutil.move(zips[0], ctx.output_dir / zips[0].name)
     names = json.dumps(console_names(multiworld), ensure_ascii=False)
     (ctx.output_dir / "names.json").write_text(names, encoding="utf-8")
+    items = json.dumps(slot_items(multiworld), ensure_ascii=False)
+    (ctx.output_dir / "slot_items.json").write_text(items, encoding="utf-8")
     return {
         "archipelago_version": Utils.__version__,
         "seed": seed,
@@ -103,6 +108,34 @@ def custom_worlds(multiworld: Any, custom: Path) -> dict[str, str]:
         if str(custom.resolve()) in str(getattr(type(world), "__file__", "")):
             found[world.game] = world.world_version.as_simple_string()
     return found
+
+
+def slot_items(multiworld: Any) -> dict[str, Any]:
+    """{"slots": {slot: [{"name", "count", "flags"}]}}: the items placed for each slot
+    anywhere in the multiworld, and its starting items. Events (no item id) are left out.
+    flags are AP's network flags: 1 progression, 2 useful, 4 trap."""
+    found: dict[int, dict[str, list[int]]] = {slot: {} for slot in multiworld.player_ids}
+
+    def add(item: Any) -> None:
+        if item is None or item.code is None or item.player not in found:
+            return
+        entry = found[item.player].setdefault(item.name, [0, int(item.flags)])
+        entry[0] += 1
+
+    for location in multiworld.get_locations():
+        add(location.item)
+    for slot in multiworld.player_ids:
+        for item in multiworld.precollected_items[slot]:
+            add(item)
+    return {
+        "slots": {
+            str(slot): [
+                {"name": name, "count": count, "flags": flags}
+                for name, (count, flags) in sorted(items.items())
+            ]
+            for slot, items in found.items()
+        }
+    }
 
 
 def console_names(multiworld: Any) -> dict[str, Any]:
