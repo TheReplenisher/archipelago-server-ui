@@ -11,7 +11,8 @@ full multiworld must not be rejected here.
 Checks across files (unique names, the slot limit) need the rest of the game, so the web
 service does them.
 
-Input: upload.yaml, plus any library apworlds chosen for it (<module>.apworld).
+Input: upload.yaml, plus any library apworlds chosen for it (<module>.apworld). One whose
+game is built in is used in place of the built-in world (apsui_worker.builtin_worlds).
 Params: plando_options (str, default AP's "bosses, connections, texts"),
         allow_quantity (bool, default false), rolls (int, default 5).
 Output: {"error": <file-level error or null>, "documents": [<per document>],
@@ -44,6 +45,7 @@ class DocumentError(Exception):
 
 def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
     from apsui_worker.archipelago import custom_worlds_dir
+    from apsui_worker.builtin_worlds import load_worlds
 
     yaml_file = ctx.input_dir / "upload.yaml"
     if not yaml_file.is_file():
@@ -51,12 +53,13 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
 
         raise JobFailure("bad-input", "Expected upload.yaml")
     # Library apworlds chosen for this upload become this job's custom worlds, before
-    # anything imports worlds.
+    # anything imports worlds; one for a built-in game replaces the built-in world (#77).
     custom = custom_worlds_dir()
     supplied = []
     for apworld in sorted(ctx.input_dir.glob("*.apworld")):
         shutil.copy2(apworld, custom / apworld.name)
         supplied.append(str(custom / apworld.name))
+    load_worlds(custom, ctx.archipelago_dir)
 
     import Utils
     from BaseClasses import PlandoOptions

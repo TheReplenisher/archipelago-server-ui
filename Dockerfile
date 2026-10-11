@@ -40,6 +40,11 @@ RUN uv pip install --python /opt/archipelago-venv/bin/python --no-deps /src/work
 # Parsed, not imported; it fails the build if the argument map has gone stale.
 RUN /opt/archipelago-venv/bin/python -m apsui_server.commands \
     /opt/archipelago/MultiServer.py /opt/apsui/commands.json
+# Which folder holds each built-in world, so an approved apworld can replace one (#77).
+# As root the install is writable, so AP makes its custom_worlds folder there: not wanted.
+RUN XDG_DATA_HOME=/tmp/ap-build SKIP_REQUIREMENTS_UPDATE=1 /opt/archipelago-venv/bin/python \
+    -m apsui_worker.builtin_worlds /opt/archipelago /opt/apsui/builtin-worlds.json \
+ && rm -rf /opt/archipelago/custom_worlds /tmp/ap-build
 
 # ---- runtime
 FROM python:${PYTHON_VERSION}-slim-trixie
@@ -55,6 +60,7 @@ RUN groupadd --system --gid 10001 apsui \
 
 COPY --from=build /opt/apsui/venv /opt/apsui/venv
 COPY --from=build /opt/apsui/commands.json /opt/apsui/commands.json
+COPY --from=build /opt/apsui/builtin-worlds.json /opt/apsui/builtin-worlds.json
 COPY --from=build /opt/archipelago-venv /opt/archipelago-venv
 COPY --from=build /opt/archipelago /opt/archipelago
 COPY --from=frontend /src/frontend/dist /opt/apsui/static

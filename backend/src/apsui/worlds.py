@@ -49,12 +49,6 @@ def choose(session: Session, game_id: int, apworld_ids: Iterable[int]) -> dict[s
         apworld = session.get(Apworld, apworld_id)
         if apworld is None or apworld.status != "approved" or not apworld.game:
             raise WorldError("apworld-unavailable", "That apworld isn't in the library")
-        if apworld.replaces_builtin:
-            # Archipelago would load the built-in world instead (#77).
-            raise WorldError(
-                "builtin-replacement-unsupported",
-                "Custom versions of built-in games aren't supported yet",
-            )
         if apworld.game in chosen:
             raise WorldError("two-versions", f"Pick one version of {apworld.game}")
         chosen[apworld.game] = apworld

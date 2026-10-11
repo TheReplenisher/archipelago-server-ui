@@ -9,7 +9,8 @@ explicit --host: without one it looks up the host's public IP over the internet.
 The game's files are in the game folder (shared with the web service):
     output/AP_<seed>.zip   what generation produced (#18); the save file lands beside it
     ap/                    XDG_DATA_HOME: Archipelago/worlds/ holds the game's locked
-                           custom apworlds, put there by the web service before a start
+                           custom apworlds, put there by the web service before a start;
+                           one for a built-in game replaces the built-in world (#77)
     logs/server.log        MultiServer's output
 """
 
@@ -123,7 +124,8 @@ class Supervisor:
         self.log_tail.clear()
         self.process = await asyncio.create_subprocess_exec(
             self.python,
-            str(self.archipelago_dir / "MultiServer.py"),
+            "-m", "apsui_server.multiserver",  # custom apworlds replace built-ins (#77)
+            str(self.archipelago_dir),
             str(outputs[0]),
             "--host", "0.0.0.0",  # noqa: S104 - players connect from anywhere
             "--port", str(self.port),

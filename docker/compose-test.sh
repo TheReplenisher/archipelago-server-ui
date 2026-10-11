@@ -51,7 +51,7 @@ assert job is not None and job.status == "ok", (job.status if job else None, job
 print("ping job: ok")
 PY
 
-echo "--- YAML uploads: web -> worker (real Archipelago) -> slots"
+echo "--- apworlds: inspected by web, import-tested by the worker (real AP), approved"
 base="http://127.0.0.1:$APSUI_WEB_PORT/api"
 wait_checked() {
     for _ in $(seq 60); do
@@ -60,7 +60,71 @@ wait_checked() {
     done
     echo "uploads still pending"; exit 1
 }
-for sample in ok__weighted option-invalid__bad-choice name-not-fixed__weighted-name; do
+apworlds=$(mktemp -d)
+for sample in "$here"/worker/tests/apworld/*/; do
+    case $sample in */replaces__*) continue ;; esac  # stubs; a real replacement follows
+    module=$(basename "$sample" | sed 's/.*__//')
+    (cd "$sample" && mkdir -p "$apworlds/src/$module" && cp ./* "$apworlds/src/$module/")
+    (cd "$apworlds/src" && python3 -m zipfile -c "$apworlds/$module.apworld" "$module")
+    curl -fsS -F "file=@$apworlds/$module.apworld" "$base/apworlds" >/dev/null
+done
+# A working replacement for a built-in world, with the built-in's own folder name (#77):
+# the image's APQuest, as version 9.9.0.
+py web > "$apworlds/apquest.apworld" <<'PY'
+import io, json, sys, zipfile
+from pathlib import Path
+src = Path("/opt/archipelago/worlds/apquest")
+buf = io.BytesIO()
+with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    for f in sorted(src.rglob("*")):
+        if f.is_file() and "__pycache__" not in f.parts and f.name != "archipelago.json":
+            zf.write(f, f"apquest/{f.relative_to(src)}")
+    # version/compatible_version as AP's packaging writes them; without, AP ignores the rest
+    manifest = json.loads((src / "archipelago.json").read_text()) | {
+        "world_version": "9.9.0", "version": 7, "compatible_version": 7}
+    zf.writestr("apquest/archipelago.json", json.dumps(manifest))
+sys.stdout.buffer.write(buf.getvalue())
+PY
+curl -fsS -F "file=@$apworlds/apquest.apworld" "$base/apworlds" >/dev/null
+for _ in $(seq 60); do
+    curl -fsS "$base/apworlds" | grep -q '"status":"checking"' || break
+    sleep 1
+done
+listing=$(curl -fsS "$base/apworlds")
+status_of() { echo "$listing" | python3 -c 'import json,sys; print(next(a["status"] + ":" + str(a["replaces_builtin"]) for a in json.load(sys.stdin) if a["filename"] == sys.argv[1]))' "$1"; }
+[ "$(status_of apsui_test_world.apworld)" = "pending:None" ] || { echo "test world: $listing"; exit 1; }
+[ "$(status_of apquest.apworld)" = "pending:2.0.0" ] || { echo "apquest: $listing"; exit 1; }
+[ "$(status_of apsui_broken.apworld)" = "rejected:None" ] || { echo "broken: $listing"; exit 1; }
+[ "$(status_of apsui_mismatch.apworld)" = "rejected:None" ] || { echo "mismatch: $listing"; exit 1; }
+id=$(echo "$listing" | python3 -c 'import json,sys; print(next(a["id"] for a in json.load(sys.stdin) if a["filename"] == "apsui_test_world.apworld"))')
+curl -fsS -X POST "$base/apworlds/$id/approve" | grep -q '"status":"approved"' \
+    || { echo "approve failed"; exit 1; }
+sha=$(curl -fsS "$base/apworlds/$id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])')
+py web <<PY || { echo "approved apworld not in the library"; exit 1; }
+import pathlib
+assert pathlib.Path("/data/library/apworlds/$sha.apworld").is_file()
+PY
+apquest=$(echo "$listing" | python3 -c 'import json,sys; print(next(a["id"] for a in json.load(sys.stdin) if a["filename"] == "apquest.apworld"))')
+curl -fsS -X POST "$base/apworlds/$apquest/approve" | grep -q '"status":"approved"' \
+    || { echo "approving the replacement failed"; exit 1; }
+rm -rf "$apworlds"
+
+echo "--- a YAML picks the approved apworld; real AP checks it with it, and the game locks"
+curl -fsS -F "file=@$here/worker/tests/yaml/game-unknown__custom-world.yaml" \
+    -F "apworld_ids=$id" "$base/uploads/yaml" >/dev/null
+wait_checked
+curl -fsS "$base/uploads" | grep -q '"filename":"game-unknown__custom-world.yaml","status":"accepted"' \
+    || { echo "custom-world YAML not accepted: $(curl -fsS "$base/uploads")"; exit 1; }
+curl -fsS "$base/worlds" | grep -q "\"world\":\"APSUI Test World\",\"label\":\"APSUI Test World · custom · v1.0.0 · ${sha%"${sha#??????}"}\"" \
+    || { echo "world not locked: $(curl -fsS "$base/worlds")"; exit 1; }
+echo "apworlds: ok"
+
+echo "--- YAML uploads: web -> worker (real Archipelago) -> slots"
+# The first APQuest YAML picks the replacement, which locks the game to it; the rest get it.
+curl -fsS -F "file=@$here/worker/tests/yaml/ok__weighted.yaml" -F "apworld_ids=$apquest" \
+    "$base/uploads/yaml" >/dev/null
+wait_checked
+for sample in option-invalid__bad-choice name-not-fixed__weighted-name; do
     curl -fsS -F "file=@$here/worker/tests/yaml/$sample.yaml" "$base/uploads/yaml" >/dev/null
 done
 wait_checked
@@ -80,45 +144,9 @@ wait_checked
 slots=$(curl -fsS "$base/slots")
 echo "$slots" | grep -q '"name":"Quester"' && echo "$slots" | grep -q '"name":"Alice"' \
     || { echo "slots after rename: $slots"; exit 1; }
+curl -fsS "$base/worlds" | grep -q '"world":"APQuest","label":"APQuest · custom · v9.9.0 · ' \
+    || { echo "APQuest not locked to the replacement: $(curl -fsS "$base/worlds")"; exit 1; }
 echo "uploads: ok"
-
-echo "--- apworlds: inspected by web, import-tested by the worker (real AP), approved"
-apworlds=$(mktemp -d)
-for sample in "$here"/worker/tests/apworld/*/; do
-    module=$(basename "$sample" | sed 's/.*__//')
-    (cd "$sample" && mkdir -p "$apworlds/src/$module" && cp ./* "$apworlds/src/$module/")
-    (cd "$apworlds/src" && python3 -m zipfile -c "$apworlds/$module.apworld" "$module")
-    curl -fsS -F "file=@$apworlds/$module.apworld" "$base/apworlds" >/dev/null
-done
-for _ in $(seq 60); do
-    curl -fsS "$base/apworlds" | grep -q '"status":"checking"' || break
-    sleep 1
-done
-listing=$(curl -fsS "$base/apworlds")
-status_of() { echo "$listing" | python3 -c 'import json,sys; print(next(a["status"] + ":" + str(a["replaces_builtin"]) for a in json.load(sys.stdin) if a["filename"] == sys.argv[1]))' "$1"; }
-[ "$(status_of apsui_test_world.apworld)" = "pending:None" ] || { echo "test world: $listing"; exit 1; }
-[ "$(status_of apquest.apworld)" = "pending:2.0.0" ] || { echo "apquest: $listing"; exit 1; }
-[ "$(status_of apsui_broken.apworld)" = "rejected:None" ] || { echo "broken: $listing"; exit 1; }
-[ "$(status_of apsui_mismatch.apworld)" = "rejected:None" ] || { echo "mismatch: $listing"; exit 1; }
-id=$(echo "$listing" | python3 -c 'import json,sys; print(next(a["id"] for a in json.load(sys.stdin) if a["filename"] == "apsui_test_world.apworld"))')
-curl -fsS -X POST "$base/apworlds/$id/approve" | grep -q '"status":"approved"' \
-    || { echo "approve failed"; exit 1; }
-sha=$(curl -fsS "$base/apworlds/$id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["sha256"])')
-py web <<PY || { echo "approved apworld not in the library"; exit 1; }
-import pathlib
-assert pathlib.Path("/data/library/apworlds/$sha.apworld").is_file()
-PY
-rm -rf "$apworlds"
-
-echo "--- a YAML picks the approved apworld; real AP checks it with it, and the game locks"
-curl -fsS -F "file=@$here/worker/tests/yaml/game-unknown__custom-world.yaml" \
-    -F "apworld_ids=$id" "$base/uploads/yaml" >/dev/null
-wait_checked
-curl -fsS "$base/uploads" | grep -q '"filename":"game-unknown__custom-world.yaml","status":"accepted"' \
-    || { echo "custom-world YAML not accepted: $(curl -fsS "$base/uploads")"; exit 1; }
-curl -fsS "$base/worlds" | grep -q "\"world\":\"APSUI Test World\",\"label\":\"APSUI Test World · custom · v1.0.0 · ${sha%"${sha#??????}"}\"" \
-    || { echo "world not locked: $(curl -fsS "$base/worlds")"; exit 1; }
-echo "apworlds: ok"
 
 echo "--- upload log: the real rejection keeps the worker's full detail"
 bad=$(curl -fsS "$base/uploads" | python3 -c 'import json,sys; print(next(u["id"] for u in json.load(sys.stdin) if u["error_code"] == "option-invalid"))')
@@ -165,7 +193,19 @@ assert spoiler["file"].endswith("_Spoiler.txt") and spoiler["size"] > 0, spoiler
     || { echo "no spoiler log"; exit 1; }
 curl -fsS "$base/game/spoiler.txt" | head -c 200 | grep -q "Archipelago Version" \
     || { echo "spoiler log unreadable"; exit 1; }
-echo "generation: ok ($zip)"
+compose exec -T web python - <<'PY' || { echo "generation didn't use the replacement"; exit 1; }
+from sqlalchemy import select
+from apsui.config import get_settings
+from apsui.db import make_engine, make_sessionmaker
+from apsui.models import Generation, Job
+
+sessions = make_sessionmaker(make_engine(get_settings().database_url))
+with sessions() as session:
+    generation = session.scalars(select(Generation).order_by(Generation.id.desc())).first()
+    output = session.get(Job, generation.job_id).result["output"]
+assert output["custom_worlds"] == {"APQuest": "9.9.0"}, output
+PY
+echo "generation: ok ($zip, with the APQuest replacement)"
 
 echo "--- settings: saved, then MultiServer reads them from host.yaml at start"
 settings() {  # settings '<python dict of changes>': PUT the settings with those changed
@@ -206,6 +246,11 @@ done
 py server <<PY || { echo "no save file after Save"; exit 1; }
 import pathlib
 assert pathlib.Path("/data/game/output/$save").is_file()
+PY
+py server <<'PY' || { echo "MultiServer didn't use the replacement"; exit 1; }
+log = open("/data/game/logs/server.log").read()
+assert "Custom apworlds replace the built-in APQuest" in log, log[-2000:]
+assert "is already loaded" not in log, log[-2000:]
 PY
 echo "--- console: the catalog and names, and a /send built from them reaches MultiServer"
 curl -fsS "$base/console/commands" | python3 -c '

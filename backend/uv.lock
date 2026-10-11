@@ -102,8 +102,12 @@ dev = [
 name = "apsui-server"
 version = "0.1.0.dev0"
 source = { editable = "../server" }
+dependencies = [
+    { name = "apsui-worker" },
+]
 
 [package.metadata]
+requires-dist = [{ name = "apsui-worker", editable = "../worker" }]
 
 [package.metadata.requires-dev]
 dev = [

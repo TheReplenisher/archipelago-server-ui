@@ -61,8 +61,7 @@ export function Uploads() {
     ])
       .then(([uploads, apworlds, worlds]) => {
         setUploads(uploads)
-        // Custom versions of built-in games can't be used yet.
-        setLibrary(apworlds.filter((a) => a.status === 'approved' && !a.replaces_builtin))
+        setLibrary(apworlds.filter((a) => a.status === 'approved'))
         setLocks(worlds)
       })
       .catch((e: unknown) => {
@@ -122,7 +121,10 @@ export function Uploads() {
             label="Custom apworlds for this YAML"
             description="Games not picked use their locked version, else the official world"
             placeholder="Official worlds"
-            data={library.map((a) => ({ value: String(a.id), label: a.label }))}
+            data={library.map((a) => ({
+              value: String(a.id),
+              label: a.replaces_builtin ? `${a.label} (replaces the built-in)` : a.label,
+            }))}
             value={picked}
             onChange={setPicked}
             clearable

@@ -2,10 +2,12 @@
 on the game's accepted YAMLs with its locked custom apworlds.
 
 Input: <upload id>.yaml for every accepted YAML, and <module>.apworld for every game
-locked to a library apworld.
+locked to a library apworld; one for a built-in game is used in place of the built-in
+world (apsui_worker.builtin_worlds, #77).
 Params: plando_options (str, default AP's), spoiler (int 0-3, default 3), race (bool),
         panic_method (swap, raise or start_inventory; default swap), seed (int or null).
-Output: {"archipelago_version", "seed", "seed_name", "zip", "players": [slot names]},
+Output: {"archipelago_version", "seed", "seed_name", "zip", "players": [slot names],
+        "custom_worlds": {game: world version} for the worlds that came from apworlds},
         output/<zip>, the file MultiServer hosts, and output/names.json: each slot's
         number, name and game, and each game's item and location names (its data
         package), for the admin console's searchable lists (#26).
@@ -16,6 +18,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -27,6 +30,7 @@ PANIC_METHODS = ("swap", "raise", "start_inventory")
 
 def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
     from apsui_worker.archipelago import custom_worlds_dir
+    from apsui_worker.builtin_worlds import load_worlds, not_replaced
     from apsui_worker.jobs import JobFailure
 
     custom = custom_worlds_dir()
@@ -38,6 +42,7 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
     (custom.parent / "host.yaml").write_text(host_yaml, encoding="utf-8")
     for apworld in sorted(ctx.input_dir.glob("*.apworld")):
         shutil.copy2(apworld, custom / apworld.name)
+    hidden = load_worlds(custom, ctx.archipelago_dir)
     # The job folder is writable; AP reads player files from a folder of its own.
     players = ctx.input_dir.parent / "players"
     players.mkdir()
@@ -54,6 +59,12 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
     import Generate
     import Main
     import Utils
+
+    if missing := not_replaced(hidden, custom):
+        raise JobFailure(
+            "builtin-not-replaced",
+            f"Archipelago loaded its built-in {missing[0]} instead of the custom apworld",
+        )
 
     argv = [
         "--player_files_path", str(players),
@@ -80,7 +91,18 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
         "seed_name": multiworld.seed_name,
         "zip": zips[0].name,
         "players": [multiworld.player_name[p] for p in multiworld.player_ids],
+        "custom_worlds": custom_worlds(multiworld, custom),
     }
+
+
+def custom_worlds(multiworld: Any, custom: Path) -> dict[str, str]:
+    """The games in this multiworld whose world came from a library apworld, and its
+    version."""
+    found = {}
+    for world in multiworld.worlds.values():
+        if str(custom.resolve()) in str(getattr(type(world), "__file__", "")):
+            found[world.game] = world.world_version.as_simple_string()
+    return found
 
 
 def console_names(multiworld: Any) -> dict[str, Any]:

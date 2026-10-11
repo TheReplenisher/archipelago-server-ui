@@ -123,6 +123,16 @@ def test_a_picked_apworld_is_checked_with_and_locks_the_game(client: TestClient)
     assert lock["label"].startswith("Sample Game · custom · v1.0.0 · ")
 
 
+def test_an_apworld_replacing_a_built_in_world_can_be_picked(client: TestClient) -> None:
+    replacement = library_apworld(client, replaces_builtin="2.0.0")
+    first = upload(client, [replacement])
+    [spec] = worker_finishes(client, checked())
+    assert spec["inputs"] == ["sample_game.apworld", "upload.yaml"]
+    assert statuses(client)[first["id"]] == ("accepted", None)
+    [lock] = worlds(client)
+    assert lock["apworld_id"] == replacement
+
+
 def test_later_uploads_get_the_locked_apworld_without_picking(client: TestClient) -> None:
     v1 = library_apworld(client)
     upload(client, [v1])
@@ -160,7 +170,7 @@ def test_removing_the_last_yaml_for_a_game_unlocks_it(client: TestClient) -> Non
     assert worlds(client) == []
 
 
-@pytest.mark.parametrize("case", ["pending", "builtin", "twice", "unknown"])
+@pytest.mark.parametrize("case", ["pending", "twice", "unknown"])
 def test_bad_picks_are_refused_at_upload(client: TestClient, case: str) -> None:
     if case == "pending":
         data = make_apworld(manifest=MANIFEST | {"world_version": "3.0.0"})
@@ -168,11 +178,6 @@ def test_bad_picks_are_refused_at_upload(client: TestClient, case: str) -> None:
             client.post("/api/apworlds", files={"file": ("sample_game.apworld", data)}).json()["id"]
         ]
         code = "apworld-unavailable"
-    elif case == "builtin":
-        picks, code = (
-            [library_apworld(client, replaces_builtin="2.0.0")],
-            "builtin-replacement-unsupported",
-        )
     elif case == "twice":
         picks, code = (
             [library_apworld(client, "1.0.0"), library_apworld(client, "2.0.0")],
