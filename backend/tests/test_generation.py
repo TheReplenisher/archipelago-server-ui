@@ -111,6 +111,23 @@ def test_output_that_is_missing_or_not_a_zip_fails(client: TestClient) -> None:
     assert client.get("/api/game/generations").json()[0]["error_code"] == "no-output"
 
 
+@pytest.mark.parametrize(
+    ("seed_name", "code"),
+    [('1"\r\nX-Injected: 1', "bad-output"), ("99999", "no-output")],
+    ids=["unsafe-seed", "zip-of-another-seed"],
+)
+def test_output_must_be_named_after_a_plain_seed(
+    client: TestClient, seed_name: str, code: str
+) -> None:
+    """The seed names downloads (patches, spoiler), and the job's result is untrusted."""
+    accept_yaml(client, "Knight")
+    client.post("/api/game/lock")
+    client.post("/api/game/generate")
+    finish_with_zip(client, ["Knight"], seed_name=seed_name)
+    assert game(client)["state"] == "locked"
+    assert client.get("/api/game/generations").json()[0]["error_code"] == code
+
+
 def test_generate_needs_locked_uploads_and_a_slot(client: TestClient) -> None:
     response = client.post("/api/game/generate")
     assert (response.status_code, response.json()["detail"]["code"]) == (409, "not-locked")

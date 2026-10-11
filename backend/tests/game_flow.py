@@ -37,14 +37,14 @@ def output_zip() -> bytes:
     return buffer.getvalue()
 
 
-def generated(players: list[str]) -> dict[str, Any]:
+def generated(players: list[str], seed_name: str = "12345") -> dict[str, Any]:
     """A generate result that also writes the output zip, as the worker would."""
 
     def output(spec: dict[str, Any]) -> dict[str, Any]:
         return {
             "archipelago_version": "0.6.8",
             "seed": 1,
-            "seed_name": "12345",
+            "seed_name": seed_name,
             "zip": "AP_12345.zip",
             "players": players,
         }
@@ -53,14 +53,14 @@ def generated(players: list[str]) -> dict[str, Any]:
 
 
 def finish_with_zip(
-    client: TestClient, players: list[str], data: bytes | None = None
+    client: TestClient, players: list[str], data: bytes | None = None, seed_name: str = "12345"
 ) -> list[dict[str, Any]]:
     jobs: JobQueue = client.app.state.jobs  # type: ignore[attr-defined]
     for job_id in jobs.dirs.ids(State.QUEUE):
         out = jobs.dirs.path(State.QUEUE, job_id) / OUTPUT_DIR
         out.mkdir(exist_ok=True)
         (out / "AP_12345.zip").write_bytes(output_zip() if data is None else data)
-    return worker_finishes(client, generated(players))
+    return worker_finishes(client, generated(players, seed_name))
 
 
 def generated_game(client: TestClient, *names: str) -> None:

@@ -158,6 +158,13 @@ import json, sys
 patches = json.load(sys.stdin)
 assert isinstance(patches, list), patches
 print("patch files:", [p["file"] for p in patches] or "none for these games")' || { echo "patch list failed"; exit 1; }
+curl -fsS "$base/game/spoiler" | python3 -c '
+import json, sys
+spoiler = json.load(sys.stdin)
+assert spoiler["file"].endswith("_Spoiler.txt") and spoiler["size"] > 0, spoiler' \
+    || { echo "no spoiler log"; exit 1; }
+curl -fsS "$base/game/spoiler.txt" | head -c 200 | grep -q "Archipelago Version" \
+    || { echo "spoiler log unreadable"; exit 1; }
 echo "generation: ok ($zip)"
 
 echo "--- server control: real MultiServer starts, answers on the game port, saves, stops"

@@ -594,6 +594,64 @@ describe('server control', () => {
   })
 })
 
+describe('spoiler log', () => {
+  it('asks first, then shows the log with a line filter', async () => {
+    const generatedGame = { ...openGame, state: 'generated', actions: ['discard-output', 'start'] }
+    const spoiler = 'Seed: 12345\n\nKnight Hookshot: Hornet Shop\nHornet Needle: Knight Cave\n'
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/api/game') return Promise.resolve(Response.json(generatedGame))
+      if (url === '/api/game/spoiler')
+        return Promise.resolve(Response.json({ file: 'AP_12345_Spoiler.txt', size: 80 }))
+      if (url === '/api/game/spoiler.txt') return Promise.resolve(new Response(spoiler))
+      if (url.startsWith('/api/') && url !== '/api/health')
+        return Promise.resolve(Response.json([]))
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Spoiler log' }))
+    const prompt = await screen.findByRole('dialog', { name: 'Are you sure?' })
+    expect(within(prompt).getByRole('link', { name: 'Yes, download it' })).toHaveAttribute(
+      'href',
+      '/api/game/spoiler.txt',
+    )
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/game/spoiler.txt', expect.anything())
+
+    await userEvent.click(within(prompt).getByRole('button', { name: 'Yes, show it' }))
+    const viewer = await screen.findByRole('dialog', { name: 'AP_12345_Spoiler.txt' })
+    expect(await within(viewer).findByText(/Knight Hookshot: Hornet Shop/)).toBeInTheDocument()
+
+    await userEvent.type(within(viewer).getByRole('textbox', { name: 'Filter lines' }), 'needle')
+    expect(within(viewer).getByText('Hornet Needle: Knight Cave')).toBeInTheDocument()
+    expect(within(viewer).queryByText(/Hookshot/)).not.toBeInTheDocument()
+  })
+
+  it('offers a very large log as a download only', async () => {
+    const generatedGame = { ...openGame, state: 'generated', actions: ['discard-output', 'start'] }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url === '/api/game') return Promise.resolve(Response.json(generatedGame))
+        if (url === '/api/game/spoiler')
+          return Promise.resolve(Response.json({ file: 'AP_1_Spoiler.txt', size: 12 * 1024 ** 2 }))
+        if (url.startsWith('/api/') && url !== '/api/health')
+          return Promise.resolve(Response.json([]))
+        return okHealth()
+      }),
+    )
+    renderRoute('/admin')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Spoiler log' }))
+    const prompt = await screen.findByRole('dialog', { name: 'Are you sure?' })
+    expect(within(prompt).getByText(/12 MB, too large to show here/)).toBeInTheDocument()
+    expect(within(prompt).getByRole('link', { name: 'Yes, download it' })).toBeInTheDocument()
+    expect(within(prompt).queryByRole('button', { name: 'Yes, show it' })).not.toBeInTheDocument()
+  })
+})
+
 describe('health page', () => {
   it('shows each service, ports, disk use and an isolation warning', async () => {
     vi.stubGlobal(
