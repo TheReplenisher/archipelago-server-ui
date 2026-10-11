@@ -5,7 +5,9 @@ transitions below. Every state change goes through apply(), so the rules live in
      ▲          │            │              │  ▲         │           │
      │          └─ unlock ◄──┴─ on failure ─┘  └── stop ─┘           │
      └──────────────────── new game (ARCHIVE) ◄──────────────────────┘
-                              restore: Archived ──► Generated
+
+ARCHIVE works from any state but Generating (#19), and restore brings a game back in the
+state it was archived from: Open, Locked or Generated (a running game is stopped first).
 
 Scheduled (Beta, #40) will slot in between Generated and Running.
 """
@@ -62,9 +64,12 @@ TRANSITIONS: dict[Action, Transition] = {
     Action.START: Transition(frozenset({S.GENERATED}), S.RUNNING),
     # Stop saves and shuts down; the game stays resumable.
     Action.STOP: Transition(frozenset({S.RUNNING}), S.GENERATED),
-    Action.ARCHIVE: Transition(frozenset({S.GENERATED, S.RUNNING}), S.ARCHIVED),
+    Action.ARCHIVE: Transition(frozenset({S.OPEN, S.LOCKED, S.GENERATED, S.RUNNING}), S.ARCHIVED),
     Action.RESTORE: Transition(frozenset({S.ARCHIVED}), S.GENERATED),
 }
+
+RESTORE_TARGETS = frozenset({S.OPEN, S.LOCKED, S.GENERATED})
+"""Restore returns a game to the state it was archived from; Generated is the default."""
 
 
 class TransitionError(Exception):
@@ -89,8 +94,9 @@ def current_game(session: Session) -> Game:
     return game
 
 
-def apply(session: Session, game: Game, action: Action) -> Game:
-    """Move a game along one transition, or raise TransitionError.
+def apply(session: Session, game: Game, action: Action, target: GameState | None = None) -> Game:
+    """Move a game along one transition, or raise TransitionError. Only RESTORE takes a
+    `target`, one of RESTORE_TARGETS.
 
     The update is conditional on the state the game was read in, so two concurrent
     requests can't both move it."""
@@ -98,10 +104,15 @@ def apply(session: Session, game: Game, action: Action) -> Game:
     source = GameState(game.state)
     if source not in transition.sources:
         raise TransitionError(game, action)
+    if target is not None and (action is not Action.RESTORE or target not in RESTORE_TARGETS):
+        raise ValueError(f"{action} can't go to {target}")
+    target = target or transition.target
     now = datetime.now(UTC)
-    values: dict[str, object] = {"state": transition.target, "updated_at": now}
-    if transition.target is GameState.ARCHIVED:
+    values: dict[str, object] = {"state": target, "updated_at": now}
+    if target is GameState.ARCHIVED:
         values |= {"is_current": None, "archived_at": now}
+    if action is Action.RESTORE:
+        values |= {"is_current": True, "archived_at": None}
     result = session.execute(
         update(Game).where(Game.id == game.id, Game.state == source).values(**values)
     )

@@ -265,6 +265,37 @@ curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "s
 curl -fsS "$base/server" | grep -q '"state":"stopped"' || { echo "server not stopped"; exit 1; }
 echo "server control: ok"
 
+echo "--- archive and restore: the game moves between the game and data volumes and back"
+game_id=$(curl -fsS "$base/game" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+curl -fsS -X POST "$base/game/archive" | grep -q '"state":"open"' || { echo "archive failed"; exit 1; }
+curl -fsS "$base/archives/$game_id" | python3 -c '
+import json, sys
+paths = {f["path"] for f in json.load(sys.stdin)["files"]}
+assert "archive.json" in paths, paths
+assert any(p.startswith("output/AP_") and p.endswith(".zip") for p in paths), paths
+assert any(p.endswith(".apsave") for p in paths), paths  # Stop saved
+assert "logs/server.log" in paths, paths' || { echo "archive incomplete"; exit 1; }
+py server <<'PY' || { echo "game folder not emptied"; exit 1; }
+import os
+left = set(os.listdir("/data/game"))
+assert not left & {"yamls", "output", "logs"}, left  # ap/ may keep AP's default files
+PY
+curl -fsS "$base/archives/$game_id/download" | python3 -c '
+import io, sys, zipfile
+names = zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())).namelist()
+assert "archive.json" in names, names' || { echo "archive zip unreadable"; exit 1; }
+curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$base/archives/$game_id/restore" \
+    | grep -q '"state":"generated"' || { echo "restore failed"; exit 1; }
+curl -fsS -X POST "$base/game/start" | grep -q '"state":"running"' || { echo "restored game won't start"; exit 1; }
+for _ in $(seq 90); do
+    curl -fsS "$base/server" | grep -q '"state":"running"' && break
+    sleep 1
+done
+curl -fsS "$base/server" | grep -q '"state":"running"' \
+    || { echo "restored game not hosted: $(curl -fsS "$base/server")"; exit 1; }
+curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
+echo "archives: ok"
+
 echo "--- health page: every service up, the published ports, compose isolation"
 curl -fsS "$base/health/details" | python3 -c '
 import json, os, sys

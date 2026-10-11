@@ -1,10 +1,16 @@
 export class ApiError extends Error {
   readonly status: number
+  /** The API's error code (`detail.code`), when it gave one. */
+  readonly code: string | undefined
+  /** The rest of the API's error detail, e.g. what a refusal is about. */
+  readonly detail: Record<string, unknown> | undefined
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, detail?: Record<string, unknown>) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.detail = detail
+    this.code = typeof detail?.code === 'string' ? detail.code : undefined
   }
 }
 
@@ -14,7 +20,8 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { Accept: 'application/json', ...init?.headers },
   })
   if (!response.ok) {
-    throw new ApiError(response.status, await errorMessage(response))
+    const body: unknown = await response.json().catch(() => null)
+    throw new ApiError(response.status, errorMessage(response, body), errorDetail(body))
   }
   return (await response.json()) as T
 }
@@ -31,19 +38,24 @@ export const postJsonBody = <T>(path: string, body: unknown) =>
 
 /** The API's short error message (`detail.message`), the first field a validation error
  * names, else the HTTP status. */
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as {
+function errorMessage(response: Response, body: unknown): string {
+  const detail = (
+    body as {
       detail?: { message?: string } | { loc?: (string | number)[]; msg?: string }[]
-    }
-    if (Array.isArray(body.detail)) {
-      const [first] = body.detail
-      if (first?.msg) return `${first.loc?.at(-1) ?? 'value'}: ${first.msg}`
-    } else if (body.detail?.message) return body.detail.message
-  } catch {
-    // not JSON
-  }
+    } | null
+  )?.detail
+  if (Array.isArray(detail)) {
+    const [first] = detail
+    if (first?.msg) return `${first.loc?.at(-1) ?? 'value'}: ${first.msg}`
+  } else if (detail?.message) return detail.message
   return `${response.status} ${response.statusText}`
+}
+
+function errorDetail(body: unknown): Record<string, unknown> | undefined {
+  const detail = (body as { detail?: unknown } | null)?.detail
+  return detail && typeof detail === 'object' && !Array.isArray(detail)
+    ? (detail as Record<string, unknown>)
+    : undefined
 }
 
 export interface Health {
@@ -63,6 +75,8 @@ export interface Game {
   created_at: string
   updated_at: string
   actions: GameAction[]
+  /** ARCHIVE is possible: not mid-generation, and there is something to keep. */
+  archivable: boolean
 }
 
 export const getGame = (signal?: AbortSignal) => getJson<Game>('/game', { signal })
@@ -303,7 +317,10 @@ export const spoilerUrl = '/api/game/spoiler.txt'
 /** The spoiler log itself: fetch it only once the admin has confirmed. */
 export async function getSpoilerText(signal?: AbortSignal): Promise<string> {
   const response = await fetch(spoilerUrl, { signal })
-  if (!response.ok) throw new ApiError(response.status, await errorMessage(response))
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null)
+    throw new ApiError(response.status, errorMessage(response, body), errorDetail(body))
+  }
   return response.text()
 }
 
@@ -347,10 +364,11 @@ export interface SettingField {
   key: string
   label: string
   help: string
-  group: 'server' | 'generation' | 'uploads' | 'advanced'
+  group: 'server' | 'generation' | 'uploads' | 'archives' | 'advanced'
   kind: 'text' | 'password' | 'number' | 'bool' | 'choice' | 'multi'
-  /** live: at once on a running server; else at the next start, generation or upload. */
-  applies: 'live' | 'start' | 'generation' | 'upload'
+  /** live: at once on a running server; else at the next start, generation, upload or
+   * archive. */
+  applies: 'live' | 'start' | 'generation' | 'upload' | 'archive'
   choices: { value: string | number; label: string }[]
   min: number | null
   max: number | null
@@ -370,3 +388,54 @@ export const putSettings = (values: Record<string, SettingValue>) =>
     body: JSON.stringify(values),
     headers: { 'Content-Type': 'application/json' },
   })
+
+export const archiveGame = () => postJson<Game>('/game/archive')
+
+export interface Archive {
+  id: number
+  created_at: string
+  archived_at: string | null
+  /** Restore brings it back in this state (Running comes back Generated). */
+  archived_from: GameState | null
+  size: number | null
+  seed_name: string | null
+  slots: string[]
+  worlds: string[]
+}
+
+export interface ArchiveDetail extends Archive {
+  files: { path: string; size: number }[]
+  generations: Generation[]
+  uploads: Record<string, unknown>[]
+}
+
+export interface ArchiveList {
+  archives: Archive[]
+  retention: {
+    limit: 'none' | 'count' | 'size'
+    max_count: number
+    max_size_mb: number
+    count: number
+    total_size: number
+  }
+}
+
+/** What a restore is refused over: the current game, which must make way first. */
+export interface CurrentGameSummary {
+  id: number
+  state: GameState
+  slots: number
+}
+
+export type RestoreChoice = 'archive' | 'delete'
+
+export const listArchives = (signal?: AbortSignal) => getJson<ArchiveList>('/archives', { signal })
+export const getArchive = (id: number, signal?: AbortSignal) =>
+  getJson<ArchiveDetail>(`/archives/${id}`, { signal })
+export const restoreArchive = (id: number, current: RestoreChoice | null) =>
+  postJsonBody<Game>(`/archives/${id}/restore`, { current })
+export const deleteArchive = (id: number) =>
+  getJson<{ deleted: boolean }>(`/archives/${id}`, { method: 'DELETE' })
+export const archiveDownloadUrl = (id: number) => `/api/archives/${id}/download`
+export const archiveFileUrl = (id: number, path: string) =>
+  `/api/archives/${id}/files/${path.split('/').map(encodeURIComponent).join('/')}`

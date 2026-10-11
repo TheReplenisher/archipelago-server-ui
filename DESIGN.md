@@ -171,7 +171,7 @@ hosting work. Each release is tested under emulated arm64 before it ships.
   game/                 the current game: YAMLs, chosen apworlds, output zip, save file, logs
                         (shared with the server)
   staging/              (Beta) uploads for the next game while one is running
-  archives/<id>/        archived games (zip + metadata)
+  archives/<id>/        archived games: their files and archive.json (#19)
   backups/              (Alpha 2) app backups
 ```
 
@@ -182,7 +182,7 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
  ▲          │            │              │  ▲         │           │
  │          └─ unlock ◄──┴─ on failure ─┘  └── stop ─┘           │
  └──────────────────── new game (ARCHIVE) ◄──────────────────────┘
-                          restore: Archived ──► Generated
+     ARCHIVE from any state but Generating; restore returns to the state it left
 ```
 
 | State | Meaning |
@@ -204,8 +204,8 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
 | generation succeeded / failed | Generating | Generated / Locked |
 | discard output | Generated | Locked |
 | start / stop | Generated ⇄ Running | |
-| archive | Generated or Running | Archived, and a new Open game becomes current |
-| restore | Archived | Generated |
+| archive | Open, Locked, Generated or Running | Archived, and a new Open game becomes current |
+| restore | Archived | the state it was archived from: Open, Locked or Generated |
 
 - **Exactly one game is current**, enforced by the database. A state change is a
   conditional update on the state it was read in, so two simultaneous requests can't both
@@ -222,6 +222,35 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
 - **Retention:** the admin can delete archives by hand and set a limit, either
   **max archive count** or **max total archive size**. When the limit is reached, the
   oldest archive is deleted automatically.
+
+**Archives, decided while building them (#19):**
+
+- **Any game with uploads can be archived,** not only a generated one: Open, Locked,
+  Generated or Running, but not while generating, nor while an upload is still being
+  checked or waits for a name. A game with no uploads and no generations has nothing to
+  keep. Running is saved and stopped first.
+- **An archive is `archives/<game id>/`** (web service only): `yamls/`, `output/` (the
+  multidata zip with its spoiler log and patch files, the save file, `names.json`),
+  `logs/`, `apworlds/` (copies of the library apworlds the game was locked to) and
+  `archive.json` (slots, worlds, the generation log and the upload log), so a downloaded
+  zip stands on its own. The game's database rows stay; the game folder is emptied.
+- **Only regular files are copied out of the game folder,** never through a symlink: the
+  server service, which runs apworld code, can write there.
+- **Restore returns a game to the state it was archived from** (Running comes back
+  Generated, stopped), and copies back any library apworld that has since gone missing.
+  The archive folder is then removed; archiving again makes a new one.
+- **The current game has to make way first.** One with nothing in it is simply replaced.
+  Otherwise the API refuses with `current-game` and a summary of it, and the admin
+  chooses (conne's decision, 2026-10-11): **archive it**, then restore, or **delete it**,
+  then restore. Deleting removes its files and rows, upload log included.
+- **Browsing is read-only:** the slots, worlds, generation log and every file, each
+  downloadable on its own, or the whole archive as one zip streamed while it is built.
+  Files are served only by their place in the listing, uncached.
+- **Retention runs each time a game is archived,** never when the setting is saved: the
+  oldest archives go until the rest fit the count or total size. The archive just made
+  (and one being restored) is never deleted, so a limit smaller than one archive keeps
+  just the newest. The limit is on the settings page (`archive_limit`,
+  `archive_max_count`, `archive_max_size_mb`).
 - **Next-game staging (Beta):** while a game is running, players can upload YAMLs for
   the next game.
 

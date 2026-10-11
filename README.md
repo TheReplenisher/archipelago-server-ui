@@ -8,8 +8,8 @@ items and hints, and finished games are archived.
 
 > **Status: Alpha 1 in progress.** The admin can run a game end to end: upload and check
 > YAMLs and apworlds, generate, start, save and stop the server, send it commands from the
-> console, watch its output in the server feed and change its settings. The slot view
-> and archives are still to come. See [DESIGN.md](DESIGN.md) for the plan and
+> console, watch its output in the server feed, change its settings, and archive and
+> restore games. The slot view is still to come. See [DESIGN.md](DESIGN.md) for the plan and
 > [ROADMAP.md](ROADMAP.md) for what comes when.
 
 **Unofficial.** This project is not affiliated with or endorsed by the Archipelago project.
@@ -86,11 +86,17 @@ Everything is on the **Admin** tab.
    lists from the game), or type any `/command`, or a message to every player. The up
    and down arrows recall what you sent. Its replies appear in the **Server feed** below,
    with everything else MultiServer prints, live.
+7. **ARCHIVE** (apart from the other buttons, and it asks first) ends the game: the server
+   is saved and stopped, the YAMLs, output, save file, spoiler log, apworlds and logs move
+   into an archive, and a new game opens for uploads. Under **Archives** you can browse an
+   archive, download it as a zip, delete it, or **Restore** it as the current game; if
+   the current game has anything in it, you choose to archive or delete it first.
 
 The **Settings** tab holds the server's host.yaml settings (room password, release and
-collect, hints, idle stop), the generation settings (spoiler, race, plando) and the upload
-rules (slot limit, apworld approval). The ones marked *Live* change a running server at
-once; the rest apply at the next start, generation or upload.
+collect, hints, idle stop), the generation settings (spoiler, race, plando), the upload
+rules (slot limit, apworld approval) and the archive limit (by count or total size; the
+oldest archives are deleted when a game is archived). The ones marked *Live* change a
+running server at once; the rest apply at the next start, generation, upload or archive.
 
 The **Spoiler log** button on the same card asks "Are you sure?" before showing anything.
 The **Health** tab shows each service, the ports, disk use, the Archipelago version and
