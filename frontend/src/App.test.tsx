@@ -627,6 +627,29 @@ describe('spoiler log', () => {
     expect(within(viewer).getByText('Hornet Needle: Knight Cave')).toBeInTheDocument()
     expect(within(viewer).queryByText(/Hookshot/)).not.toBeInTheDocument()
   })
+
+  it('offers a very large log as a download only', async () => {
+    const generatedGame = { ...openGame, state: 'generated', actions: ['discard-output', 'start'] }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url === '/api/game') return Promise.resolve(Response.json(generatedGame))
+        if (url === '/api/game/spoiler')
+          return Promise.resolve(Response.json({ file: 'AP_1_Spoiler.txt', size: 12 * 1024 ** 2 }))
+        if (url.startsWith('/api/') && url !== '/api/health')
+          return Promise.resolve(Response.json([]))
+        return okHealth()
+      }),
+    )
+    renderRoute('/admin')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Spoiler log' }))
+    const prompt = await screen.findByRole('dialog', { name: 'Are you sure?' })
+    expect(within(prompt).getByText(/12 MB, too large to show here/)).toBeInTheDocument()
+    expect(within(prompt).getByRole('link', { name: 'Yes, download it' })).toBeInTheDocument()
+    expect(within(prompt).queryByRole('button', { name: 'Yes, show it' })).not.toBeInTheDocument()
+  })
 })
 
 describe('health page', () => {
