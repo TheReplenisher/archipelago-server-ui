@@ -1,8 +1,9 @@
 """The server supervisor: owns MultiServer and answers the web service on the control
 socket (#70, #24).
 
-Operations: status, start, stop, save. MultiServer is driven through its own console on
-stdin (/save, /exit), so no Archipelago connection is needed for these. It always gets an
+Operations: status, start, stop, save, command. MultiServer is driven through its own
+console on stdin (/save, /exit, and the admin's own lines with command), so no
+Archipelago connection is needed for these. It always gets an
 explicit --host: without one it looks up the host's public IP over the internet.
 
 The game's files are in the game folder (shared with the web service):
@@ -45,6 +46,7 @@ STOP_TIMEOUT = 30.0
 """Seconds MultiServer gets to save and exit before it is terminated."""
 LOG_TAIL_LINES = 40
 READY_MARKER = "Hosting game at"
+MAX_COMMAND_CHARS = 1000
 
 
 def error(code: str, message: str) -> dict[str, Any]:
@@ -86,6 +88,8 @@ class Supervisor:
             return await self.stop()
         if op == "save":
             return await self.save()
+        if op == "command":
+            return await self.command(request.get("text"))
         return error("unknown-op", f"Unknown operation {op!r}")
 
     def status(self) -> dict[str, Any]:
@@ -160,6 +164,21 @@ class Supervisor:
             return error("not-running", "The server isn't running")
         assert self.process is not None  # noqa: S101 - _alive() checked it
         await self._send(self.process, "/save")
+        return self.status()
+
+    async def command(self, text: object) -> dict[str, Any]:
+        """One line for MultiServer's console, as the admin typed it: a /command, or plain
+        text, which MultiServer sends to every player as the server's chat."""
+        if not isinstance(text, str) or not text.strip() or len(text) > MAX_COMMAND_CHARS:
+            return error("bad-command", f"A command is 1 to {MAX_COMMAND_CHARS} characters")
+        if not text.isprintable():  # a newline would smuggle in a second command
+            return error("bad-command", "A command is a single line of text")
+        if text.split()[0].lower() == "/exit":  # AP matches commands in any case
+            return error("use-stop", "Use Stop to shut the server down: it saves first")
+        if not self._alive() or self.state != "running":
+            return error("not-running", "The server isn't running")
+        assert self.process is not None  # noqa: S101 - _alive() checked it
+        await self._send(self.process, text.strip())
         return self.status()
 
     async def _send(self, process: asyncio.subprocess.Process, *commands: str) -> None:

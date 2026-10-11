@@ -197,6 +197,8 @@ py server <<PY || { echo "no save file after Save"; exit 1; }
 import pathlib
 assert pathlib.Path("/data/game/output/$save").is_file()
 PY
+curl -fsS -X POST -H 'Content-Type: application/json' -d '{"text":"/players"}' \
+    "$base/server/command" | grep -q '"state":"running"' || { echo "console command failed"; exit 1; }
 curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
 curl -fsS "$base/server" | grep -q '"state":"stopped"' || { echo "server not stopped"; exit 1; }
 echo "server control: ok"

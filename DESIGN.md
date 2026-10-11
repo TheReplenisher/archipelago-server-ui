@@ -425,6 +425,12 @@ Decided while building it (#23):
 - **The command list is generated automatically** from the pinned AP version's command
   handlers, then given a hand-maintained map of argument types. This keeps it correct
   when AP is upgraded.
+- Decided while building the first part (#26): `POST /api/server/command` sends one
+  line to MultiServer's console on stdin, exactly as if typed there (a `/command`, or
+  chat as the server). The supervisor takes a single printable line of up to 1000
+  characters, only while the server is running, so a newline can't smuggle in a second
+  command. `/exit` is refused in favour of Stop, which saves first. Its output goes to
+  MultiServer's log; showing it live is the feed (#27).
 
 ### Server feed (decided in #6: hybrid)
 

@@ -54,3 +54,21 @@ async def save_server(
         raise HTTPException(exc.status, detail={"code": exc.code, "message": exc.message}) from exc
     fields = {k: v for k, v in response.items() if k in ServerStatus.model_fields}
     return ServerStatus.model_validate(fields | {"reachable": True})
+
+
+class ConsoleLine(BaseModel):
+    text: str
+
+
+@router.post("/server/command")
+async def send_command(
+    line: ConsoleLine, request: Request, session: Annotated[Session, Depends(get_session)]
+) -> ServerStatus:
+    """Send one line to MultiServer's console, as typed on its own console: a /command, or
+    chat as the server. The output goes to MultiServer's log (the live feed is #27)."""
+    try:
+        response = await hosting.command(session, request.app.state.settings, line.text)
+    except hosting.HostingError as exc:
+        raise HTTPException(exc.status, detail={"code": exc.code, "message": exc.message}) from exc
+    fields = {k: v for k, v in response.items() if k in ServerStatus.model_fields}
+    return ServerStatus.model_validate(fields | {"reachable": True})
