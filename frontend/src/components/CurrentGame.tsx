@@ -12,6 +12,7 @@ import {
   type Generation,
   type ServerStatus,
 } from '../api/client'
+import { ServerConsole } from './ServerConsole'
 import { PatchFiles } from './PatchFiles'
 import { SpoilerLog } from './SpoilerLog'
 
@@ -183,6 +184,7 @@ export function CurrentGame() {
         ) : (
           generations[0] && <LatestGeneration generation={generations[0]} />
         )}
+        {server?.state === 'running' && <ServerConsole />}
         {hasOutput && <PatchFiles key={generations[0]?.id} />}
         {hasOutput && <SpoilerLog key={`spoiler-${generations[0]?.id}`} />}
         {game && game.actions.length > 0 && (

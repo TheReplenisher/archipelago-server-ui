@@ -251,6 +251,9 @@ export interface ServerStatus {
 export const getServer = (signal?: AbortSignal) => getJson<ServerStatus>('/server', { signal })
 export const saveServer = () => postJson<ServerStatus>('/server/save')
 
+/** One line for MultiServer's console, as typed there: a /command, or chat as the server. */
+export const sendCommand = (text: string) => postJsonBody<ServerStatus>('/server/command', { text })
+
 export interface HealthDetails {
   version: string
   archipelago_version: string | null

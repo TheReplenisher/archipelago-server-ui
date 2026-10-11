@@ -553,6 +553,8 @@ describe('server control', () => {
         )
       if (url === '/api/server/save' && init?.method === 'POST')
         return Promise.resolve(Response.json({ reachable: true, state: 'running' }))
+      if (url === '/api/server/command' && init?.method === 'POST')
+        return Promise.resolve(Response.json({ reachable: true, state: 'running' }))
       if (url === '/api/game') return Promise.resolve(Response.json(current))
       if (url === '/api/server')
         return Promise.resolve(
@@ -591,6 +593,15 @@ describe('server control', () => {
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/server/save', expect.anything()),
     )
+
+    await userEvent.type(screen.getByRole('textbox', { name: 'Console' }), '/players')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByLabelText('Sent commands')).toHaveTextContent('/players')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/server/command',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ text: '/players' }) }),
+    )
+    expect(screen.getByRole('textbox', { name: 'Console' })).toHaveValue('')
   })
 })
 
