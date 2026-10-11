@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -34,7 +34,6 @@ log = logging.getLogger(__name__)
 GENERATE_TIMEOUT = 3600
 # Generation settings come from the settings page with #25; these are AP's defaults.
 GENERATE_PARAMS = {"plando_options": VALIDATE_PARAMS["plando_options"], "spoiler": 3}
-_OUTPUT_NAME = re.compile(r"AP_[A-Za-z0-9_-]{1,64}\.zip")
 _UPLOAD_FILE = re.compile(r"\b(\d+)\.yaml\b")
 
 
@@ -47,7 +46,8 @@ class GenerationError(Exception):
 class GenerateOutput(BaseModel):
     """The generate job's output, parsed strictly: it is untrusted."""
 
-    seed_name: str
+    seed_name: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    """It names files and downloads, so only the characters AP's own seed names use."""
     zip: str
     players: list[str]
 
@@ -138,7 +138,8 @@ def _finish(
         _failed(session, game, generation, "bad-output", "Generation gave an unreadable result")
         return
     source = safe_output_files(job_dir).get(output.zip)
-    if not _OUTPUT_NAME.fullmatch(output.zip) or source is None or not zipfile.is_zipfile(source):
+    named = output.zip == f"AP_{output.seed_name}.zip"
+    if not named or source is None or not zipfile.is_zipfile(source):
         _failed(session, game, generation, "no-output", "Generation produced no output file")
         return
     target_dir = output_dir(settings)
