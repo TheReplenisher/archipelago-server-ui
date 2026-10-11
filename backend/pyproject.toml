@@ -1,6 +1,6 @@
 [project]
 name = "apsui"
-version = "0.1.0.dev0"
+version = "0.1.0a1"
 description = "Web service for Archipelago Server UI: UI, API, auth, lifecycle and logs."
 license = "MIT"
 requires-python = ">=3.12"

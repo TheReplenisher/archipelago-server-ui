@@ -30,4 +30,5 @@ Approving an apworld means trusting its author. Only approve worlds from sources
 
 ## Supported versions
 
-Pre-release. Only the latest commit on `main` is supported.
+Alpha. Fixes go into `main` and the next release: only the latest release (currently
+`v0.1.0-alpha.1`) and `main` are supported.

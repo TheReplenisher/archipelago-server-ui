@@ -6,11 +6,12 @@ custom apworlds (all checked before they're accepted), the admin generates and r
 the server from a console with command assistance, players follow their own slot's
 items and hints, and finished games are archived.
 
-> **Status: Alpha 1 in progress.** The admin can run a game end to end: upload and check
-> YAMLs and apworlds, generate, start, save and stop the server, send it commands from the
-> console, watch its output in the server feed, change its settings, and archive and
-> restore games, and players can follow their own slot. See [DESIGN.md](DESIGN.md) for the plan and
-> [ROADMAP.md](ROADMAP.md) for what comes when.
+> **Status: Alpha 1 (`v0.1.0-alpha.1`).** The admin runs a game end to end: upload and
+> check YAMLs and apworlds, generate, start, save and stop the server, send it commands from
+> the console, watch its output in the server feed, change its settings, and archive and
+> restore games, and players follow their own slot. Player uploads and an admin login come
+> in Alpha 2. See [DESIGN.md](DESIGN.md) for the plan and [ROADMAP.md](ROADMAP.md) for what
+> comes when.
 
 **Unofficial.** This project is not affiliated with or endorsed by the Archipelago project.
 

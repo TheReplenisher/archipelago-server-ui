@@ -1,6 +1,6 @@
 [project]
 name = "apsui-server"
-version = "0.1.0.dev0"
+version = "0.1.0a1"
 description = "Server service for Archipelago Server UI: supervises MultiServer and serves the control socket."
 license = "MIT"
 requires-python = ">=3.12"
