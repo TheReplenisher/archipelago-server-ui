@@ -200,7 +200,9 @@ def _finish(session: Session, upload: Upload, job: Job, settings: Settings) -> N
     accepted = accepted_path(settings, upload)
     accepted.parent.mkdir(parents=True, exist_ok=True)
     # uploads/ and game/ are separate volumes under Compose, so this may be a copy.
-    shutil.move(pending_path(settings, upload), accepted)
+    # Copied, so it takes the game folder's group (LXC, #14).
+    shutil.copyfile(pending_path(settings, upload), accepted)
+    pending_path(settings, upload).unlink()
     for document in documents:
         assert document.name is not None  # noqa: S101 - no name problem means it is set
         upload.slots.append(

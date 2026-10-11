@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from apsui.same_origin import host_pattern
@@ -21,6 +21,12 @@ class Settings(BaseSettings):
 
     jobs_dir: Path | None = None
     """Shared with the worker. Defaults to <data_dir>/jobs."""
+
+    game_dir_path: Annotated[
+        Path | None, Field(validation_alias=AliasChoices("APSUI_GAME_DIR", "game_dir_path"))
+    ] = None
+    """Shared with the server service (APSUI_GAME_DIR, as the supervisor reads it). Defaults
+    to <data_dir>/game; the LXC install keeps it out of the web-only data folder (#14)."""
 
     job_poll_interval: float = 1.0
     """Seconds between checks for finished worker jobs."""
@@ -113,7 +119,7 @@ class Settings(BaseSettings):
     @property
     def game_dir(self) -> Path:
         """The current game's files, shared with the server service."""
-        return self.data_dir / "game"
+        return self.game_dir_path or self.data_dir / "game"
 
     @property
     def resolved_static_dir(self) -> Path | None:
