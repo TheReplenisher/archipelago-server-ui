@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from apsui import hosting, patches
+from apsui import hosting, patches, spoiler
 from apsui.db import get_session
 from apsui.generation import GenerationError, discard_output, start, summary
 from apsui.lifecycle import Action, GameState, TransitionError, allowed_actions, apply, current_game
@@ -207,3 +207,36 @@ def download_patch(file: str, request: Request, session: SessionDep) -> Streamin
     except patches.PatchError as exc:
         raise _patch_error(exc) from exc
     return _download(file, chunks)
+
+
+class SpoilerOut(BaseModel):
+    file: str
+    size: int
+
+
+@router.get("/spoiler")
+def get_spoiler(request: Request, session: SessionDep) -> SpoilerOut:
+    """Whether the generated game has a spoiler log, and its size. The log itself is
+    GET /api/game/spoiler.txt, which the UI fetches only after an "Are you sure?" prompt."""
+    try:
+        found = spoiler.find_spoiler(session, request.app.state.settings)
+    except patches.PatchError as exc:
+        raise _patch_error(exc) from exc
+    return SpoilerOut(file=found.file, size=found.size)
+
+
+@router.get("/spoiler.txt")
+def download_spoiler(request: Request, session: SessionDep) -> StreamingResponse:
+    """The spoiler log, as text. Never cached, so it doesn't linger in a shared browser."""
+    try:
+        name, chunks = spoiler.read_spoiler(session, request.app.state.settings)
+    except patches.PatchError as exc:
+        raise _patch_error(exc) from exc
+    return StreamingResponse(
+        chunks,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Cache-Control": "no-store",
+        },
+    )

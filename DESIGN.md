@@ -445,6 +445,12 @@ Decided while building it (#23):
 
 - The admin can view or download it.
 - It always shows an "Are you sure?" prompt first.
+- Decided while building it (#28): it is `AP_<seed>_Spoiler.txt` at the top of the output
+  zip, read straight out of it; no other entry is. The UI only asks whether one exists
+  (and its size) until the admin confirms, since the admin may be playing too. The viewer
+  has a line filter for finding one item or location; logs over 5 MB are offered as a
+  download only. Responses are `Cache-Control: no-store`. A game generated without a
+  spoiler has no button.
 
 ### host.yaml settings (decided in #9)
 

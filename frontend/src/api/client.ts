@@ -276,3 +276,21 @@ export const listPatches = (signal?: AbortSignal) =>
 
 export const patchUrl = (file: string) => `/api/game/patches/${encodeURIComponent(file)}`
 export const allPatchesUrl = '/api/game/patches-all.zip'
+
+export interface SpoilerInfo {
+  file: string
+  size: number
+}
+
+/** Whether the generated game has a spoiler log; safe to call, it holds no spoilers. */
+export const getSpoiler = (signal?: AbortSignal) =>
+  getJson<SpoilerInfo>('/game/spoiler', { signal })
+
+export const spoilerUrl = '/api/game/spoiler.txt'
+
+/** The spoiler log itself: fetch it only once the admin has confirmed. */
+export async function getSpoilerText(signal?: AbortSignal): Promise<string> {
+  const response = await fetch(spoilerUrl, { signal })
+  if (!response.ok) throw new ApiError(response.status, await errorMessage(response))
+  return response.text()
+}

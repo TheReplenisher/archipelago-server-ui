@@ -13,6 +13,7 @@ import {
   type ServerStatus,
 } from '../api/client'
 import { PatchFiles } from './PatchFiles'
+import { SpoilerLog } from './SpoilerLog'
 
 const stateInfo: Record<GameState, { label: string; color: string; help: string }> = {
   open: { label: 'Open', color: 'green', help: 'Uploads are being accepted.' },
@@ -159,6 +160,7 @@ export function CurrentGame() {
   }
 
   const info = game ? stateInfo[game.state] : null
+  const hasOutput = game?.state === 'generated' || game?.state === 'running'
   return (
     <Card withBorder>
       <Stack gap="sm">
@@ -181,9 +183,8 @@ export function CurrentGame() {
         ) : (
           generations[0] && <LatestGeneration generation={generations[0]} />
         )}
-        {(game?.state === 'generated' || game?.state === 'running') && (
-          <PatchFiles key={generations[0]?.id} />
-        )}
+        {hasOutput && <PatchFiles key={generations[0]?.id} />}
+        {hasOutput && <SpoilerLog key={`spoiler-${generations[0]?.id}`} />}
         {game && game.actions.length > 0 && (
           <Group>
             {game.actions.map((action) => (
