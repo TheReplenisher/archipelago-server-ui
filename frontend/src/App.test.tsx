@@ -545,6 +545,12 @@ describe('server control', () => {
         current = runningGame
         return Promise.resolve(Response.json(current))
       }
+      if (url === '/api/game/patches')
+        return Promise.resolve(
+          Response.json([
+            { file: 'AP_12345_P1_Knight.apz5', player: 1, slot: 'Knight', size: 2048 },
+          ]),
+        )
       if (url === '/api/server/save' && init?.method === 'POST')
         return Promise.resolve(Response.json({ reachable: true, state: 'running' }))
       if (url === '/api/game') return Promise.resolve(Response.json(current))
@@ -573,6 +579,14 @@ describe('server control', () => {
       await screen.findByText('Server running on port 38281 (AP_12345.zip)'),
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Stop server' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'AP_12345_P1_Knight.apz5' })).toHaveAttribute(
+      'href',
+      '/api/game/patches/AP_12345_P1_Knight.apz5',
+    )
+    expect(screen.getByRole('link', { name: /Download all/ })).toHaveAttribute(
+      'href',
+      '/api/game/patches-all.zip',
+    )
     await userEvent.click(screen.getByRole('button', { name: 'Save' }))
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith('/api/server/save', expect.anything()),

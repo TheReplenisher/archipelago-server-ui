@@ -153,6 +153,11 @@ py server <<PY || { echo "server can't see the output"; exit 1; }
 import zipfile
 assert zipfile.is_zipfile("/data/game/output/$zip")
 PY
+curl -fsS "$base/game/patches" | python3 -c '
+import json, sys
+patches = json.load(sys.stdin)
+assert isinstance(patches, list), patches
+print("patch files:", [p["file"] for p in patches] or "none for these games")' || { echo "patch list failed"; exit 1; }
 echo "generation: ok ($zip)"
 
 echo "--- server control: real MultiServer starts, answers on the game port, saves, stops"

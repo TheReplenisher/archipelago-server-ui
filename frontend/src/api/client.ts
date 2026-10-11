@@ -263,3 +263,16 @@ export interface HealthDetails {
 
 export const getHealthDetails = (signal?: AbortSignal) =>
   getJson<HealthDetails>('/health/details', { signal })
+
+export interface PatchFile {
+  file: string
+  player: number
+  slot: string
+  size: number
+}
+
+export const listPatches = (signal?: AbortSignal) =>
+  getJson<PatchFile[]>('/game/patches', { signal })
+
+export const patchUrl = (file: string) => `/api/game/patches/${encodeURIComponent(file)}`
+export const allPatchesUrl = '/api/game/patches-all.zip'

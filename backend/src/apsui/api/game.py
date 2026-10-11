@@ -1,12 +1,14 @@
+from collections.abc import Iterator
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from apsui import hosting
+from apsui import hosting, patches
 from apsui.db import get_session
 from apsui.generation import GenerationError, discard_output, start, summary
 from apsui.lifecycle import Action, GameState, TransitionError, allowed_actions, apply, current_game
@@ -156,3 +158,52 @@ async def stop_server(request: Request, session: SessionDep) -> GameOut:
         return game_out(await hosting.stop(session, request.app.state.settings))
     except hosting.HostingError as exc:
         raise _hosting_error(exc) from exc
+
+
+class PatchOut(BaseModel):
+    file: str
+    player: int
+    slot: str
+    size: int
+
+
+def _patch_error(exc: patches.PatchError) -> HTTPException:
+    return HTTPException(exc.status, detail={"code": exc.code, "message": exc.message})
+
+
+def _download(name: str, chunks: Iterator[bytes]) -> StreamingResponse:
+    return StreamingResponse(
+        chunks,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@router.get("/patches")
+def list_patches(request: Request, session: SessionDep) -> list[PatchOut]:
+    """Each slot's patch or mod file in the generated output (admin only in Alpha 1)."""
+    try:
+        found = patches.list_patches(session, request.app.state.settings)
+    except patches.PatchError as exc:
+        raise _patch_error(exc) from exc
+    return [PatchOut(file=p.file, player=p.player, slot=p.slot, size=p.size) for p in found]
+
+
+@router.get("/patches-all.zip")
+def download_all_patches(request: Request, session: SessionDep) -> StreamingResponse:
+    """Every slot's patch file, as one zip."""
+    try:
+        name, chunks = patches.all_patches(session, request.app.state.settings)
+    except patches.PatchError as exc:
+        raise _patch_error(exc) from exc
+    return _download(name, chunks)
+
+
+@router.get("/patches/{file}")
+def download_patch(file: str, request: Request, session: SessionDep) -> StreamingResponse:
+    """One slot's patch file."""
+    try:
+        chunks = patches.read_patch(session, request.app.state.settings, file)
+    except patches.PatchError as exc:
+        raise _patch_error(exc) from exc
+    return _download(file, chunks)
