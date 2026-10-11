@@ -40,6 +40,15 @@ def test_a_fresh_development_setup(client: TestClient) -> None:
     assert found["server"] == (False, "Not answering")
     assert [d["name"] for d in body["disks"]] == ["Data", "Job queue", "Current game"]
     assert all(d["total"] >= d["free"] > 0 for d in body["disks"])
+    assert body["host_names"][:2] == ["any IP address", "localhost"]
+    assert body["host_names"][-2:] == ["*.internal", "testserver"]
+    assert body["host_names_warning"] is None
+
+
+def test_answering_to_any_name_is_flagged(settings: Settings) -> None:
+    settings.allowed_hosts = ["*"]
+    with TestClient(create_app(settings)) as c:
+        assert "DNS rebinding" in details(c)["host_names_warning"]
 
 
 def test_worker_and_server_up(client: TestClient, settings: Settings, tmp_path: Path) -> None:

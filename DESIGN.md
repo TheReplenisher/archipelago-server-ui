@@ -615,7 +615,8 @@ The tracker data comes from an AP-protocol connection made as that slot with the
 
 - **Alpha 1: there is no admin login.** The admin tab is open to anyone who can reach
   the UI. This is an accepted early-alpha risk; the README warns against exposing an
-  Alpha 1 install to the internet.
+  Alpha 1 install to the internet. Websites the admin visits can't use it through the
+  admin's browser (§8, requests from other websites).
 - **Alpha 2:** one default admin account. A password is set on first login and can be
   changed later.
 - **Beta:** the default admin can add more admins, each with a role that limits what
@@ -648,6 +649,37 @@ The tracker data comes from an AP-protocol connection made as that slot with the
 - **Uploads are sent in chunks**, so large files work behind proxies with body-size limits.
 - **ROMs (Future):** admin approval only, with no auto-approve. ROMs are never served to
   players, and users must supply their own legally obtained copies.
+
+### Requests from other websites (security fix, 2026-10-11)
+
+The admin's browser can reach the UI, so any page it opens can send requests there too:
+forms and `fetch()` POST anywhere without a CORS preflight, uploads included. Middleware
+in front of the whole web app (`apsui.same_origin`) therefore:
+
+- **Answers only to known host names.** Otherwise DNS rebinding makes an attacker's page
+  same-origin with the UI, free to read it (passwords, spoiler) as well as write to it.
+  - IP addresses, `localhost` and the reserved local suffixes (`.localhost`, `.local`,
+    `.home.arpa`, `.internal`) always pass: public DNS never answers for them.
+  - Other names go in `APSUI_ALLOWED_HOSTS`. `*` turns the check off, and the health page
+    then warns.
+  - `.lan` and dotless names aren't assumed local. Neither is reserved, and DNS search
+    domains can make a dotless name public.
+- **Refuses unsafe methods and WebSocket handshakes from another origin.**
+  - `Sec-Fetch-Site` decides when present: `same-origin` and `none` pass.
+  - Browsers send it only to HTTPS and localhost, so on a plain-HTTP install `Origin`
+    decides. It is compared with `Host` including the port, and `null` is refused.
+  - Requests with neither header come from clients that aren't browsers, and pass.
+- **Forbids framing** (`X-Frame-Options: DENY`, `frame-ancestors 'none'`), since clicks
+  inside a frame are same-origin.
+
+Rejected:
+
+- **A required custom header** (to force a CORS preflight): it adds nothing to the above
+  in current browsers, doesn't help against rebinding, and breaks curl and scripts.
+- **CSRF tokens:** there are no sessions to bind them to before admin login (#32).
+
+Admin login keeps the guard. Its cookies should be `SameSite=Strict`, and the guard still
+covers the login form and the player pages.
 
 ## 9. Installation targets
 

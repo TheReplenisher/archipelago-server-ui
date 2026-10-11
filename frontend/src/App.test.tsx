@@ -911,7 +911,7 @@ describe('spoiler log', () => {
 })
 
 describe('health page', () => {
-  it('shows each service, ports, disk use and an isolation warning', async () => {
+  it('shows each service, ports, disk use, host names and their warnings', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL) => {
@@ -922,6 +922,8 @@ describe('health page', () => {
               archipelago_version: '0.6.8',
               isolation: 'none',
               isolation_warning: "Services aren't isolated",
+              host_names: ['any IP address', 'localhost', '*.local', 'apsui.home.example'],
+              host_names_warning: 'The web UI answers to any host name',
               services: [
                 { name: 'web', up: true, detail: 'v1.2.3, database ok' },
                 { name: 'worker', up: true, detail: 'Heartbeat 2s ago; 0 queued, 0 running' },
@@ -949,6 +951,10 @@ describe('health page', () => {
     expect(await screen.findByText(/Heartbeat 2s ago/)).toBeInTheDocument()
     expect(screen.getByText('Down')).toBeInTheDocument()
     expect(screen.getByText('Reduced isolation')).toBeInTheDocument()
+    expect(screen.getByText('Any host name accepted')).toBeInTheDocument()
+    expect(
+      screen.getByText('any IP address, localhost, *.local, apsui.home.example'),
+    ).toBeInTheDocument()
     expect(screen.getByText('38281')).toBeInTheDocument()
     expect(screen.getByText('6.0 GB free of 10.0 GB')).toBeInTheDocument()
   })

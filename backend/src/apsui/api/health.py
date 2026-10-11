@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from apsui import __version__
 from apsui.config import Settings
 from apsui.db import get_session
+from apsui.same_origin import LOCAL_SUFFIXES
 from apsui.server_control import request as control_request
 
 router = APIRouter(tags=["health"])
@@ -58,6 +59,10 @@ class HealthDetails(BaseModel):
     archipelago_version: str | None
     isolation: str
     isolation_warning: str | None
+    host_names: list[str]
+    """What the web UI answers to (apsui.same_origin): addresses, local names, then
+    APSUI_ALLOWED_HOSTS."""
+    host_names_warning: str | None
     services: list[ServiceHealth]
     ports: list[Port]
     disks: list[DiskUse]
@@ -99,11 +104,16 @@ ISOLATION_WARNINGS = {
     "web service. Use only for development.",
 }
 
+ANY_HOST_WARNING = (
+    "The web UI answers to any host name (APSUI_ALLOWED_HOSTS=*), so a website the admin "
+    "visits can reach it through DNS rebinding. List the names you use instead."
+)
+
 
 @router.get("/health/details")
 async def health_details(request: Request, session: SessionDep) -> HealthDetails:
     """The health page (admin): each service, published ports, disk use, the Archipelago
-    version and the isolation mode."""
+    version, the isolation mode and the host names the UI answers to."""
     settings: Settings = request.app.state.settings
     session.execute(text("SELECT 1"))
     server, status = await _server(settings)
@@ -130,6 +140,13 @@ async def health_details(request: Request, session: SessionDep) -> HealthDetails
         isolation_warning=ISOLATION_WARNINGS.get(
             settings.isolation, f"Unknown isolation mode {settings.isolation!r}"
         ),
+        host_names=[
+            "any IP address",
+            "localhost",
+            *(f"*{suffix}" for suffix in LOCAL_SUFFIXES),
+            *settings.allowed_hosts,
+        ],
+        host_names_warning=ANY_HOST_WARNING if "*" in settings.allowed_hosts else None,
         services=services,
         ports=[
             Port(name="Web UI", port=settings.public_web_port),

@@ -13,6 +13,7 @@ from apsui.config import Settings, get_settings
 from apsui.db import make_engine, make_sessionmaker
 from apsui.generation import finish_generation
 from apsui.jobs import JobQueue
+from apsui.same_origin import SameOriginGuard
 from apsui.spa import SPAStaticFiles
 from apsui.uploads import finish_yaml
 
@@ -58,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Archipelago Server UI", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    app.add_middleware(SameOriginGuard, allowed_hosts=settings.allowed_hosts)
     app.include_router(api_router)
 
     static_dir = settings.resolved_static_dir

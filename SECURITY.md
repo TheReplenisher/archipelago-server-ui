@@ -16,6 +16,16 @@ multiworld means running that code. This project therefore:
   read-only filesystem and resource limits;
 - never imports apworld code in the web service, which holds the database and secrets.
 
+Alpha 1 has no admin login, so the admin tab is open to anyone who can reach the web UI.
+That includes, through the admin's own browser, any website the admin visits. The web
+service therefore refuses:
+
+- requests that change something, and WebSocket connections, sent by pages on other
+  websites (judged by `Sec-Fetch-Site`, else `Origin`);
+- host names it doesn't know (DNS rebinding): only IP addresses, local names and
+  `APSUI_ALLOWED_HOSTS` are answered;
+- being shown in a frame (clickjacking).
+
 Approving an apworld means trusting its author. Only approve worlds from sources you trust.
 
 ## Supported versions

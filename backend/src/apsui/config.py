@@ -2,10 +2,12 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+from apsui.same_origin import host_pattern
 
 # frontend/dist in a source checkout: backend/src/apsui/config.py -> repo root
 _SOURCE_TREE_STATIC = Path(__file__).resolve().parents[3] / "frontend" / "dist"
@@ -71,6 +73,20 @@ class Settings(BaseSettings):
     port: int = 8000
     forwarded_allow_ips: str = "127.0.0.1"
     """Reverse proxies whose X-Forwarded-* headers are trusted."""
+
+    allowed_hosts: Annotated[list[str], NoDecode] = []
+    """Names browsers may use to reach the web UI, besides IP addresses and local-only
+    names (apsui.same_origin): comma-separated, `*.example.com` for its subdomains, `*`
+    for any name, which turns off the check against DNS rebinding."""
+
+    @field_validator("allowed_hosts", mode="before")
+    @classmethod
+    def _host_names(cls, value: object) -> object:
+        if isinstance(value, str):  # from the environment
+            value = [v for v in value.split(",") if v.strip()]
+        if isinstance(value, list):
+            return [host_pattern(v) if isinstance(v, str) else v for v in value]
+        return value
 
     @property
     def database_url(self) -> str:

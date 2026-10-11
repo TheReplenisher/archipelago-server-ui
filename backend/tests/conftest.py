@@ -23,6 +23,8 @@ def settings(tmp_path: Path, static_dir: Path) -> Settings:
         data_dir=tmp_path / "data",
         static_dir=static_dir,
         control_socket=tmp_path / "no-supervisor.sock",
+        # TestClient's host name. Like any name that isn't local-only, it must be listed.
+        allowed_hosts=["testserver"],
     )
 
 

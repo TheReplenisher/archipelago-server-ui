@@ -49,9 +49,16 @@ Put any of these in a `.env` file next to `compose.yaml`, then `docker compose u
 | `APSUI_WORKER_MEMORY` | `2g` | Memory limit of the worker (generation) |
 | `APSUI_SERVER_MEMORY` | `1g` | Memory limit of the server |
 | `APSUI_WORKER_CPUS` | `2` | CPU limit of the worker |
+| `APSUI_ALLOWED_HOSTS` | *(none)* | Names you reach the web UI by, comma-separated (below) |
 
 A port can name the host address to listen on, e.g. `APSUI_WEB_PORT=127.0.0.1:8000`
 to reach the web UI only from the same machine.
+
+**Host names.** The web UI answers only to names it knows, so that another website can't
+reach it through a name of its own (DNS rebinding). IP addresses and local names
+(`localhost`, `*.local`, `*.home.arpa`, `*.internal`) always work. For any other name,
+such as `nas.lan` or your reverse proxy's domain, list it: `APSUI_ALLOWED_HOSTS=nas.lan`.
+`*.example.com` covers its subdomains. Until you do, the page says which name to add.
 
 ### Proxmox LXC
 
@@ -86,7 +93,8 @@ rules (slot limit, apworld approval). The ones marked *Live* change a running se
 once; the rest apply at the next start, generation or upload.
 
 The **Spoiler log** button on the same card asks "Are you sure?" before showing anything.
-The **Health** tab shows each service, the ports, disk use and the Archipelago version.
+The **Health** tab shows each service, the ports, disk use, the Archipelago version and
+the host names the web UI answers to.
 
 ## Ports
 
@@ -140,7 +148,8 @@ http:
 ```
 
 Replace `192.168.1.10` with the Docker host's address, and firewall port `8000` so only
-the proxy can reach it. If the proxy is installed on the same machine (not in a
+the proxy can reach it. Add the proxy's domain to `APSUI_ALLOWED_HOSTS`
+(`APSUI_ALLOWED_HOSTS=apsui.home.example` here). If the proxy is installed on the same machine (not in a
 container of its own), set `APSUI_WEB_PORT=127.0.0.1:8000` instead and point it at
 `127.0.0.1:8000`.
 
@@ -172,6 +181,10 @@ docker image rm ghcr.io/thereplenisher/archipelago-server-ui:edge
 Uploaded `.apworld` files are Python code. Read [SECURITY.md](SECURITY.md) before
 exposing an install to the internet. **Alpha 1 has no admin login; do not expose it
 publicly.**
+
+The web service refuses requests that pages on other websites send through your browser,
+names it doesn't know, and being shown in a frame, so a site you visit can't use the
+admin tab even though your browser can reach it.
 
 ## License
 

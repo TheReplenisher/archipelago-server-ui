@@ -28,7 +28,9 @@ def test_unknown_api_paths_are_404_not_the_app_shell(client: TestClient, path: s
 
 
 def test_without_a_built_frontend_the_api_still_works(tmp_path: Path) -> None:
-    settings = Settings(data_dir=tmp_path / "data", static_dir=tmp_path / "missing")
+    settings = Settings(
+        data_dir=tmp_path / "data", static_dir=tmp_path / "missing", allowed_hosts=["testserver"]
+    )
     with TestClient(create_app(settings)) as client:
         assert client.get("/api/health").status_code == 200
         assert client.get("/").status_code == 404

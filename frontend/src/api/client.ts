@@ -265,6 +265,9 @@ export interface HealthDetails {
   archipelago_version: string | null
   isolation: string
   isolation_warning: string | null
+  /** What the web UI answers to: addresses, local names, then APSUI_ALLOWED_HOSTS. */
+  host_names: string[]
+  host_names_warning: string | null
   services: { name: 'web' | 'worker' | 'server'; up: boolean; detail: string }[]
   ports: { name: string; port: number | null }[]
   disks: { name: string; path: string; total: number; used: number; free: number }[]

@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 from typing import Annotated
-from urllib.parse import urlsplit
 
 from apsui_server.protocol import ControlError
 from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -77,24 +76,12 @@ async def send_command(
     return ServerStatus.model_validate(fields | {"reachable": True})
 
 
-def _same_origin(websocket: WebSocket) -> bool:
-    """Browsers let any page open a WebSocket anywhere, so one from another site (which
-    sends its Origin) is refused: the feed holds the room password. Clients that aren't
-    browsers send no Origin."""
-    origin = websocket.headers.get("origin")
-    if origin is None:
-        return True
-    return urlsplit(origin).netloc.lower() == websocket.headers.get("host", "").lower()
-
-
 @router.websocket("/server/feed")
 async def server_feed(websocket: WebSocket) -> None:
     """MultiServer's output, live: {"reset": true, "lines": [...]} with the scrollback
     first (and again when a new log starts), then {"reset": false, "lines": [...]} as
-    lines are written."""
-    if not _same_origin(websocket):
-        await websocket.close(code=1008)  # policy violation
-        return
+    lines are written. The feed holds the room password: browsers let any page open a
+    WebSocket anywhere, so apsui.same_origin refuses pages on other websites."""
     await websocket.accept()
     settings: Settings = websocket.app.state.settings
     follower = feed.Follower(feed.server_log(settings))

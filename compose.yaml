@@ -9,6 +9,9 @@
 #   APSUI_WEB_PORT        web UI, plain HTTP    (default 8000; put HTTPS in front of it)
 #   APSUI_GAME_PORT       Archipelago clients   (default 38281)
 #                         Either may name a host address too, e.g. 127.0.0.1:8000.
+#   APSUI_ALLOWED_HOSTS   names you reach the web UI by, comma-separated, besides IP
+#                         addresses and local names (localhost, *.local, *.home.arpa,
+#                         *.internal). Other names are refused (DNS rebinding).
 #   APSUI_WEB_MEMORY      memory limits         (defaults 512m / 2g / 1g)
 #   APSUI_WORKER_MEMORY
 #   APSUI_SERVER_MEMORY
@@ -38,6 +41,7 @@ services:
       APSUI_ISOLATION: compose
       APSUI_PUBLIC_WEB_PORT: ${APSUI_WEB_PORT:-8000}
       APSUI_PUBLIC_GAME_PORT: ${APSUI_GAME_PORT:-38281}
+      APSUI_ALLOWED_HOSTS: ${APSUI_ALLOWED_HOSTS:-}
     networks: [web]
     volumes:
       - data:/data

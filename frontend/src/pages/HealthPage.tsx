@@ -11,8 +11,8 @@ function gigabytes(bytes: number): string {
 
 const serviceLabel = { web: 'Web', worker: 'Worker', server: 'Server' }
 
-/** Whether each service is up, ports, disk use, the AP version and the isolation mode
- * (DESIGN.md §7). Refreshes every few seconds. */
+/** Whether each service is up, ports, disk use, the AP version, the isolation mode and the
+ * host names the UI answers to (DESIGN.md §7, §8). Refreshes every few seconds. */
 export function HealthPage() {
   const [health, setHealth] = useState<HealthDetails | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +48,11 @@ export function HealthPage() {
           {health.isolation_warning}
         </Alert>
       )}
+      {health?.host_names_warning && (
+        <Alert color="orange" icon={<IconAlertTriangle />} title="Any host name accepted">
+          {health.host_names_warning}
+        </Alert>
+      )}
       {health && (
         <>
           <Card withBorder>
@@ -77,6 +82,10 @@ export function HealthPage() {
                 <Table.Tr>
                   <Table.Th>Isolation</Table.Th>
                   <Table.Td>{health.isolation}</Table.Td>
+                </Table.Tr>
+                <Table.Tr>
+                  <Table.Th>Answers to</Table.Th>
+                  <Table.Td>{health.host_names.join(', ')}</Table.Td>
                 </Table.Tr>
                 {health.ports.map((p) => (
                   <Table.Tr key={p.name}>

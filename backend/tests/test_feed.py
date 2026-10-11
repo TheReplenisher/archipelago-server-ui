@@ -95,12 +95,22 @@ def test_the_feed_accepts_its_own_page(client: TestClient, origin: str | None) -
         assert ws.receive_json() == {"reset": True, "lines": []}
 
 
-@pytest.mark.parametrize("origin", ["http://evil.example", "http://testserver.evil.example"])
-def test_the_feed_refuses_other_sites(client: TestClient, origin: str) -> None:
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"origin": "http://evil.example"},
+        {"origin": "http://testserver.evil.example"},
+        {"origin": "null"},
+        {"origin": "https://evil.example", "sec-fetch-site": "cross-site"},
+        # DNS rebinding: the attacker's own name, now pointing here, is its own origin.
+        {"host": "evil.example", "origin": "http://evil.example"},
+    ],
+)
+def test_the_feed_refuses_other_sites(client: TestClient, headers: dict[str, str]) -> None:
     """Any page can open a WebSocket anywhere; the feed holds the room password."""
     with (
         pytest.raises(WebSocketDisconnect) as refused,
-        client.websocket_connect("/api/server/feed", headers={"origin": origin}),
+        client.websocket_connect("/api/server/feed", headers=headers),
     ):
         pass
     assert refused.value.code == 1008
