@@ -222,6 +222,19 @@ py server <<'PY' || { echo "the /send never reached MultiServer"; exit 1; }
 assert "Cheat console: sending" in open("/data/game/logs/server.log").read()
 PY
 echo "console: ok ($send)"
+py web <<'PY' || { echo "server feed incomplete"; exit 1; }
+import asyncio, json
+import websockets
+
+async def scrollback():
+    async with websockets.connect("ws://127.0.0.1:8000/api/server/feed") as ws:
+        return json.loads(await ws.recv())["lines"]
+
+lines = asyncio.run(scrollback())
+assert any(l.startswith("[") and "Hosting game at" in l for l in lines), lines[-20:]  # --logtime
+assert any("Cheat console: sending" in l for l in lines), lines[-20:]  # the console's /send
+print(f"server feed: {len(lines)} lines of scrollback")
+PY
 curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
 curl -fsS "$base/server" | grep -q '"state":"stopped"' || { echo "server not stopped"; exit 1; }
 echo "server control: ok"

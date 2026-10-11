@@ -125,6 +125,7 @@ class Supervisor:
             str(outputs[0]),
             "--host", "0.0.0.0",  # noqa: S104 - players connect from anywhere
             "--port", str(self.port),
+            "--logtime",  # timestamps in the log, which is the admin's server feed (#27)
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,

@@ -73,7 +73,7 @@ function ArgInput({ arg, value, onChange, names, game }: ArgInputProps) {
 
 /** MultiServer's console, while the server runs. Pick a command and fill in its arguments
  * from the game's own names, or type any line by hand; the up and down arrows recall the
- * lines sent. Its replies go to the server's log until the live feed (#27) shows them. */
+ * lines sent. Its replies appear in the server feed. */
 export function ServerConsole() {
   const [text, setText] = useState('')
   const [sent, setSent] = useState<string[]>([])
@@ -215,7 +215,7 @@ export function ServerConsole() {
           </Code>
         )}
         <Text size="xs" c="dimmed">
-          The server's replies go to its log; the live server feed is still to come.
+          The server's replies appear in the server feed.
         </Text>
       </Stack>
     </form>

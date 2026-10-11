@@ -5,6 +5,7 @@ import { afterEach, vi } from 'vitest'
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 // jsdom lacks these; Mantine uses them.
@@ -28,3 +29,12 @@ class ResizeObserverStub {
   disconnect() {}
 }
 window.ResizeObserver = ResizeObserverStub
+
+// The server feed opens a WebSocket; tests that look at it stub their own.
+class InertWebSocket {
+  onopen: (() => void) | null = null
+  onmessage: (() => void) | null = null
+  onclose: (() => void) | null = null
+  close() {}
+}
+window.WebSocket = InertWebSocket as unknown as typeof WebSocket

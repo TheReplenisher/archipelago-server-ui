@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderRoute } from './test/render'
@@ -685,6 +685,53 @@ describe('console', () => {
     await pickOption('Command', '/release')
     await pickOption('Player', 'Big Hornet')
     expect(line).toHaveValue('/release Big Hornet')
+  })
+})
+
+describe('server feed', () => {
+  class FakeWebSocket {
+    static sockets: FakeWebSocket[] = []
+    onopen: (() => void) | null = null
+    onmessage: ((event: { data: string }) => void) | null = null
+    onclose: (() => void) | null = null
+    url: string
+    constructor(url: string) {
+      this.url = url
+      FakeWebSocket.sockets.push(this)
+    }
+    close() {}
+    send(message: unknown) {
+      this.onmessage?.({ data: JSON.stringify(message) })
+    }
+  }
+
+  it('shows the scrollback, then each new line, and reconnects', async () => {
+    FakeWebSocket.sockets = []
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+    stubHealth(okHealth)
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    renderRoute('/admin')
+    const feed = await screen.findByLabelText('Server feed')
+    expect(feed).toHaveTextContent('No server output yet.')
+    const [socket] = FakeWebSocket.sockets
+    expect(socket.url).toMatch(/^ws:\/\/.+\/api\/server\/feed$/)
+
+    act(() => {
+      socket.onopen?.()
+      socket.send({ reset: true, lines: ['Hosting game at 0.0.0.0:38281'] })
+      socket.send({ reset: false, lines: ['Notice (all): [Server]: hello'] })
+    })
+    expect(screen.getByText('Live')).toBeInTheDocument()
+    expect(feed).toHaveTextContent('Hosting game at 0.0.0.0:38281 Notice (all): [Server]: hello')
+
+    act(() => socket.send({ reset: true, lines: ['a new game'] }))
+    expect(feed).toHaveTextContent(/^a new game$/)
+
+    act(() => socket.onclose?.())
+    expect(screen.getByText('Reconnecting')).toBeInTheDocument()
+    await act(() => vi.advanceTimersByTimeAsync(2000))
+    expect(FakeWebSocket.sockets).toHaveLength(2)
+    vi.useRealTimers()
   })
 })
 

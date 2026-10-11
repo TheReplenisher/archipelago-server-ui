@@ -465,6 +465,20 @@ Decided while building it (#23):
 - **Accepted:** every Tracker connection is announced to all players ("X tracking … has
   joined"), including in their game clients. Universal Tracker and PopTracker behave the
   same way.
+- Decided while building the admin feed (#27):
+  - **The web service follows `logs/server.log`,** which the supervisor appends
+    MultiServer's output to, and streams it over a WebSocket (`/api/server/feed`): the
+    last 500 lines first, then each line as it is written (checked twice a second). A
+    log that is truncated, replaced or removed starts over. MultiServer runs with
+    `--logtime`, so its logged lines carry timestamps; command output it prints directly
+    (`/players`) doesn't.
+  - **Same-origin only:** browsers let any page open a WebSocket anywhere, so one whose
+    `Origin` isn't this host is refused, since the feed holds the room password. Clients
+    that aren't browsers send no `Origin` and are let in, like the rest of the Alpha 1
+    admin API. A reverse proxy must pass the `Host` header through (Caddy, Nginx Proxy
+    Manager and Traefik do by default).
+  - The page keeps the last 2000 lines, follows the newest unless the admin scrolls up,
+    and reconnects after 2 seconds.
 
 ### Spoiler log
 

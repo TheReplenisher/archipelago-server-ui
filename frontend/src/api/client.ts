@@ -327,3 +327,7 @@ export const listCommands = (signal?: AbortSignal) =>
 
 export const getConsoleNames = (signal?: AbortSignal) =>
   getJson<ConsoleNames>('/console/names', { signal })
+
+/** The server feed's WebSocket, on this page's own host (the server refuses others). */
+export const serverFeedUrl = () =>
+  `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/server/feed`

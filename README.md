@@ -7,9 +7,10 @@ the server from a console with command assistance, players follow their own slot
 items and hints, and finished games are archived.
 
 > **Status: Alpha 1 in progress.** The admin can run a game end to end: upload and check
-> YAMLs and apworlds, generate, start, save and stop the server, and send it commands from
-> the console. The server feed, slot view, settings page and archives are still to come. See [DESIGN.md](DESIGN.md)
-> for the plan and [ROADMAP.md](ROADMAP.md) for what comes when.
+> YAMLs and apworlds, generate, start, save and stop the server, send it commands from the
+> console and watch its output in the server feed. The slot view, settings page and
+> archives are still to come. See [DESIGN.md](DESIGN.md) for the plan and
+> [ROADMAP.md](ROADMAP.md) for what comes when.
 
 **Unofficial.** This project is not affiliated with or endorsed by the Archipelago project.
 
@@ -76,7 +77,8 @@ Everything is on the **Admin** tab.
 6. While the server runs, the **console** sends a line to MultiServer's own console: pick
    a **Command** and fill in its arguments (players, items and locations are searchable
    lists from the game), or type any `/command`, or a message to every player. The up
-   and down arrows recall what you sent. Its replies go to the server's log for now.
+   and down arrows recall what you sent. Its replies appear in the **Server feed** below,
+   with everything else MultiServer prints, live.
 
 The **Spoiler log** button on the same card asks "Are you sure?" before showing anything.
 The **Health** tab shows each service, the ports, disk use and the Archipelago version.
@@ -99,9 +101,10 @@ internet games is planned (#10).
 ## HTTPS with a reverse proxy
 
 The web service speaks plain HTTP on `APSUI_WEB_PORT`. A reverse proxy in front of it
-adds HTTPS. Turn on WebSocket support where the proxy asks: the live server feed will
-use it. (Remember the warning above: in Alpha 1 this is for HTTPS on your own network,
-not for exposing the admin tab.)
+adds HTTPS. Turn on WebSocket support where the proxy asks: the server feed uses it. The
+proxy must pass the `Host` header through, as these three do by default, because the feed
+only accepts its own page. (Remember the warning above: in Alpha 1 this is for HTTPS on
+your own network, not for exposing the admin tab.)
 
 **Caddy** (`Caddyfile`):
 
