@@ -79,7 +79,9 @@ with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
     for f in sorted(src.rglob("*")):
         if f.is_file() and "__pycache__" not in f.parts and f.name != "archipelago.json":
             zf.write(f, f"apquest/{f.relative_to(src)}")
-    manifest = json.loads((src / "archipelago.json").read_text()) | {"world_version": "9.9.0"}
+    # version/compatible_version as AP's packaging writes them; without, AP ignores the rest
+    manifest = json.loads((src / "archipelago.json").read_text()) | {
+        "world_version": "9.9.0", "version": 7, "compatible_version": 7}
     zf.writestr("apquest/archipelago.json", json.dumps(manifest))
 sys.stdout.buffer.write(buf.getvalue())
 PY
