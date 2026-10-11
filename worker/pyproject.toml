@@ -1,6 +1,6 @@
 [project]
 name = "apsui-worker"
-version = "0.1.0.dev0"
+version = "0.1.0a1"
 description = "Worker service for Archipelago Server UI: runs jobs that execute Archipelago code."
 license = "MIT"
 requires-python = ">=3.12"

@@ -4,6 +4,8 @@
 # runs its jobs against the sample YAMLs and apworlds.
 # Usage: smoke-test.sh <image> <expected AP version>     (CONTAINER=podman to use podman)
 set -eu
+# Waits scale with APSUI_TEST_WAIT_SCALE, e.g. 10 for an image run under emulation (#60).
+scale=${APSUI_TEST_WAIT_SCALE:-1}
 
 image=$1
 ap_version=$2
@@ -16,7 +18,7 @@ trap cleanup EXIT
 
 echo "--- web service"
 "$engine" run -d --name "$name" -p "127.0.0.1:$port:8000" "$image" >/dev/null
-for _ in $(seq 30); do
+for _ in $(seq $((30 * scale))); do
     curl -fsS "http://127.0.0.1:$port/api/health" >/dev/null 2>&1 && break
     sleep 1
 done

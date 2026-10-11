@@ -3,25 +3,40 @@
 # service's isolation holds (DESIGN.md §2, #13).
 # Usage: compose-test.sh <image>       (COMPOSE="podman compose" etc. to override)
 set -eu
+# Waits scale with APSUI_TEST_WAIT_SCALE, e.g. 10 for an image run under emulation (#60).
+scale=${APSUI_TEST_WAIT_SCALE:-1}
 
 export APSUI_IMAGE="$1"
 export APSUI_WEB_PORT="${APSUI_WEB_PORT:-18080}"
 export APSUI_GAME_PORT="${APSUI_GAME_PORT:-48281}"
 project="apsui-test-$$"
 here=$(cd "$(dirname "$0")/.." && pwd)
-compose() { ${COMPOSE:-docker compose} -p "$project" -f "$here/compose.yaml" "$@"; }
+files="-f $here/compose.yaml"
+if [ "$scale" -gt 1 ]; then
+    # A slow (emulated) run: each healthcheck starts Python, which takes longer than its
+    # 5-second timeout there. Give the checks the same scale, in an override file.
+    slow=$(mktemp)
+    for service in web worker server; do
+        printf '  %s:\n    healthcheck: {interval: %ss, timeout: %ss, start_period: %ss}\n' \
+            "$service" $((6 * scale)) $((5 * scale)) $((30 * scale))
+    done | { echo "services:"; cat; } > "$slow"
+    files="$files -f $slow"
+fi
+# shellcheck disable=SC2086  # $files is a list of arguments
+compose() { ${COMPOSE:-docker compose} -p "$project" $files "$@"; }
 py() { service=$1; shift; compose exec -T "$service" /opt/archipelago-venv/bin/python - "$@"; }
 
 cleanup() {
     status=$?
     if [ "$status" -ne 0 ]; then compose logs --no-color --tail 50 || true; fi
     compose down -v --timeout 5 >/dev/null 2>&1 || true
+    [ -z "${slow:-}" ] || rm -f "$slow"
     exit "$status"
 }
 trap cleanup EXIT
 
 echo "--- start the stack and wait for every healthcheck"
-compose up -d --wait --wait-timeout 120
+compose up -d --wait --wait-timeout $((120 * scale))
 
 echo "--- web answers on the published port"
 curl -fsS "http://127.0.0.1:$APSUI_WEB_PORT/api/health" | grep -q '"status":"ok"'
@@ -30,8 +45,8 @@ echo "--- web reaches the server supervisor over the control socket"
 curl -fsS "http://127.0.0.1:$APSUI_WEB_PORT/api/server" | grep -q '"reachable":true'
 
 echo "--- a job goes web -> worker -> web"
-compose exec -T web python - <<'PY'
-import time
+compose exec -T web python - "$scale" <<'PY'
+import sys, time
 from apsui.config import get_settings
 from apsui.db import make_engine, make_sessionmaker
 from apsui.jobs import JobQueue
@@ -41,7 +56,7 @@ settings = get_settings()
 sessions = make_sessionmaker(make_engine(settings.database_url))
 with sessions() as session:
     job_id = JobQueue(settings.resolved_jobs_dir).submit(session, "ping").id
-for _ in range(60):  # the web service's own collector records the result
+for _ in range(60 * int(sys.argv[1])):  # the web service's own collector records it
     with sessions() as session:
         job = session.get(Job, job_id)
         if job is not None and job.status not in ("queued", "running"):
@@ -54,7 +69,7 @@ PY
 echo "--- apworlds: inspected by web, import-tested by the worker (real AP), approved"
 base="http://127.0.0.1:$APSUI_WEB_PORT/api"
 wait_checked() {
-    for _ in $(seq 60); do
+    for _ in $(seq $((60 * scale))); do
         curl -fsS "$base/uploads" | grep -q '"status":"pending"' || return 0
         sleep 1
     done
@@ -86,7 +101,7 @@ with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
 sys.stdout.buffer.write(buf.getvalue())
 PY
 curl -fsS -F "file=@$apworlds/apquest.apworld" "$base/apworlds" >/dev/null
-for _ in $(seq 60); do
+for _ in $(seq $((60 * scale))); do
     curl -fsS "$base/apworlds" | grep -q '"status":"checking"' || break
     sleep 1
 done
@@ -166,7 +181,7 @@ custom=$(curl -fsS "$base/uploads" | python3 -c 'import json,sys; print(next(u["
 curl -fsS -X DELETE "$base/uploads/$custom" >/dev/null  # the sample world is a stub
 curl -fsS -X POST "$base/game/lock" | grep -q '"state":"locked"' || { echo "lock failed"; exit 1; }
 curl -fsS -X POST "$base/game/generate" >/dev/null
-for _ in $(seq 180); do
+for _ in $(seq $((180 * scale))); do
     curl -fsS "$base/game" | grep -q '"state":"generating"' || break
     sleep 1
 done
@@ -219,7 +234,7 @@ settings '{"password": "compose pw", "hint_cost": 20}' >/dev/null || { echo "set
 
 echo "--- server control: real MultiServer starts, answers on the game port, saves, stops"
 curl -fsS -X POST "$base/game/start" | grep -q '"state":"running"' || { echo "start failed"; exit 1; }
-for _ in $(seq 90); do
+for _ in $(seq $((90 * scale))); do
     curl -fsS "$base/server" | grep -q '"state":"running"' && break
     sleep 1
 done
@@ -236,7 +251,7 @@ with socket.create_connection(("127.0.0.1", int(sys.argv[1])), timeout=10) as s:
 PY
 curl -fsS -X POST "$base/server/save" >/dev/null
 save="${zip%.zip}.apsave"
-for _ in $(seq 20); do
+for _ in $(seq $((20 * scale))); do
     py server <<PY >/dev/null 2>&1 && break
 import pathlib
 assert pathlib.Path("/data/game/output/$save").is_file()
@@ -267,7 +282,7 @@ item = names["games"][game]["items"][0]
 print(json.dumps({"text": f"/send Alice \"{item}\""}))') || { echo "no console names"; exit 1; }
 curl -fsS -X POST -H 'Content-Type: application/json' -d "$send" "$base/server/command" \
     | grep -q '"state":"running"' || { echo "console command failed"; exit 1; }
-for _ in $(seq 20); do
+for _ in $(seq $((20 * scale))); do
     py server <<'PY' >/dev/null 2>&1 && break
 assert "Cheat console: sending" in open("/data/game/logs/server.log").read()
 PY
@@ -283,7 +298,7 @@ assert "(Password: compose pw)" in log, log[-2000:]
 PY
 settings '{"hint_cost": 30}' | grep -q '"applied_now":\["hint_cost"\]' \
     || { echo "live setting not applied"; exit 1; }
-for _ in $(seq 20); do
+for _ in $(seq $((20 * scale))); do
     py server <<'PY' >/dev/null 2>&1 && break
 assert "Set option hint_cost to 30" in open("/data/game/logs/server.log").read()
 PY
@@ -364,7 +379,7 @@ assert "archive.json" in names, names' || { echo "archive zip unreadable"; exit 
 curl -fsS -X POST -H 'Content-Type: application/json' -d '{}' "$base/archives/$game_id/restore" \
     | grep -q '"state":"generated"' || { echo "restore failed"; exit 1; }
 curl -fsS -X POST "$base/game/start" | grep -q '"state":"running"' || { echo "restored game won't start"; exit 1; }
-for _ in $(seq 90); do
+for _ in $(seq $((90 * scale))); do
     curl -fsS "$base/server" | grep -q '"state":"running"' && break
     sleep 1
 done
