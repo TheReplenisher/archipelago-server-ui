@@ -27,12 +27,13 @@ class Settings(BaseSettings):
     """The server supervisor's control socket (#70)."""
 
     max_slots: int = 50
-    """The most player slots one game may have (DESIGN.md §4). Moves to the settings page
-    with #25."""
+    """The default slot limit (DESIGN.md §4), until the admin sets one on the settings
+    page (#25)."""
 
     apworld_approval: Literal["manual", "auto"] = "manual"
-    """Whether an apworld that passes its checks needs the admin's approval (DESIGN.md §4).
-    One that replaces a built-in world always does. Moves to the settings page with #25."""
+    """The default for whether an apworld that passes its checks needs the admin's approval
+    (DESIGN.md §4), until the admin sets it on the settings page (#25). One that replaces a
+    built-in world always does."""
 
     archipelago_version: str = ""
     """The pinned Archipelago version, set in the image. Empty skips the apworld version

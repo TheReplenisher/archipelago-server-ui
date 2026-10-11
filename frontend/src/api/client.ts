@@ -29,11 +29,17 @@ export const postJsonBody = <T>(path: string, body: unknown) =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-/** The API's short error message (`detail.message`), else the HTTP status. */
+/** The API's short error message (`detail.message`), the first field a validation error
+ * names, else the HTTP status. */
 async function errorMessage(response: Response): Promise<string> {
   try {
-    const body = (await response.json()) as { detail?: { message?: string } }
-    if (body.detail?.message) return body.detail.message
+    const body = (await response.json()) as {
+      detail?: { message?: string } | { loc?: (string | number)[]; msg?: string }[]
+    }
+    if (Array.isArray(body.detail)) {
+      const [first] = body.detail
+      if (first?.msg) return `${first.loc?.at(-1) ?? 'value'}: ${first.msg}`
+    } else if (body.detail?.message) return body.detail.message
   } catch {
     // not JSON
   }
@@ -234,7 +240,7 @@ export interface Generation {
 export const listGenerations = (signal?: AbortSignal) =>
   getJson<Generation[]>('/game/generations', { signal })
 
-export type ServerState = 'stopped' | 'starting' | 'running' | 'stopping' | 'crashed'
+export type ServerState = 'stopped' | 'starting' | 'running' | 'stopping' | 'idle' | 'crashed'
 
 export interface ServerStatus {
   reachable: boolean
@@ -331,3 +337,33 @@ export const getConsoleNames = (signal?: AbortSignal) =>
 /** The server feed's WebSocket, on this page's own host (the server refuses others). */
 export const serverFeedUrl = () =>
   `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/server/feed`
+
+export type SettingValue = string | number | boolean | string[]
+
+export interface SettingField {
+  key: string
+  label: string
+  help: string
+  group: 'server' | 'generation' | 'uploads' | 'advanced'
+  kind: 'text' | 'password' | 'number' | 'bool' | 'choice' | 'multi'
+  /** live: at once on a running server; else at the next start, generation or upload. */
+  applies: 'live' | 'start' | 'generation' | 'upload'
+  choices: { value: string | number; label: string }[]
+  min: number | null
+  max: number | null
+  warning: string | null
+}
+
+export interface SettingsPage {
+  values: Record<string, SettingValue>
+  fields: SettingField[]
+}
+
+export const getSettings = (signal?: AbortSignal) => getJson<SettingsPage>('/settings', { signal })
+
+export const putSettings = (values: Record<string, SettingValue>) =>
+  getJson<{ values: Record<string, SettingValue>; applied_now: string[] }>('/settings', {
+    method: 'PUT',
+    body: JSON.stringify(values),
+    headers: { 'Content-Type': 'application/json' },
+  })

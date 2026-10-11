@@ -10,6 +10,7 @@ from typing import Any
 from apsui_server.protocol import ControlError
 from sqlalchemy.orm import Session
 
+from apsui import host_settings
 from apsui.apworlds import library_path
 from apsui.config import Settings
 from apsui.lifecycle import Action, GameState, TransitionError, apply, current_game
@@ -56,6 +57,9 @@ async def start(session: Session, settings: Settings) -> Game:
     if game.state != GameState.GENERATED:
         raise HostingError("not-generated", "Generate the game before starting the server")
     prepare_worlds(session, settings, game)
+    # MultiServer reads its defaults from host.yaml in its user folder (#25).
+    user_dir = settings.game_dir / "ap" / "Archipelago"
+    host_settings.write_host_yaml(host_settings.load(session, settings), user_dir)
     await _ask(settings, "start")
     try:
         return apply(session, game, Action.START)

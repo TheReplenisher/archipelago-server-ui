@@ -25,6 +25,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from apsui import host_settings
 from apsui.config import Settings
 from apsui.jobs import JobQueue
 from apsui.lifecycle import GameState, current_game
@@ -45,7 +46,6 @@ log = logging.getLogger(__name__)
 MAX_YAML_BYTES = 512_000
 
 # Generation settings come from the settings page with #25; these are AP's defaults.
-VALIDATE_PARAMS = {"plando_options": "bosses, connections, texts", "allow_quantity": False}
 
 
 class UploadError(Exception):
@@ -135,7 +135,8 @@ def _check(
 ) -> None:
     inputs: dict[str, bytes | Path] = {"upload.yaml": data}
     inputs |= job_inputs(session, settings, upload)
-    job = jobs.submit(session, "validate-yaml", params=VALIDATE_PARAMS, inputs=inputs)
+    params = host_settings.validate_params(host_settings.load(session, settings))
+    job = jobs.submit(session, "validate-yaml", params=params, inputs=inputs)
     upload.job_id = job.id
     session.commit()
 
@@ -187,8 +188,9 @@ def _finish(session: Session, upload: Upload, job: Job, settings: Settings) -> N
     if conflict(session, upload, games):
         return reject("version-locked", LOCKED_MESSAGE)
     quantity = sum(d.quantity for d in documents)
-    if slot_count(session, upload.game_id) + quantity > settings.max_slots:
-        return reject("too-many-slots", f"This would go over the {settings.max_slots}-slot limit")
+    limit = host_settings.load(session, settings).max_slots
+    if slot_count(session, upload.game_id) + quantity > limit:
+        return reject("too-many-slots", f"This would go over the {limit}-slot limit")
 
     problems = name_problems(session, upload.game_id, documents)
     if problems:

@@ -178,3 +178,13 @@ class Generation(Base):
 
 
 __all__ = ["Apworld", "Base", "Game", "Generation", "Job", "Slot", "Upload", "WorldLock"]
+
+
+class Setting(Base):
+    """An admin setting, by key (DESIGN.md §2: app.db holds the settings). The settings
+    page (#25) is stored under "host"."""
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSON)

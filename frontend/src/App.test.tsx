@@ -735,6 +735,123 @@ describe('server feed', () => {
   })
 })
 
+describe('settings page', () => {
+  const field = (key: string, label: string, extra: Record<string, unknown>) => ({
+    key,
+    label,
+    help: `${label} help`,
+    choices: [],
+    min: null,
+    max: null,
+    warning: null,
+    ...extra,
+  })
+  const page = {
+    values: {
+      hint_cost: 10,
+      spoiler: 3,
+      plando_options: ['bosses'],
+      log_network: false,
+    },
+    fields: [
+      field('hint_cost', 'Hint cost', {
+        group: 'server',
+        kind: 'number',
+        applies: 'live',
+        min: 0,
+        max: 100,
+      }),
+      field('spoiler', 'Spoiler log', {
+        group: 'generation',
+        kind: 'choice',
+        applies: 'generation',
+        choices: [
+          { value: 0, label: 'None' },
+          { value: 3, label: 'Full' },
+        ],
+      }),
+      field('plando_options', 'Plando', {
+        group: 'generation',
+        kind: 'multi',
+        applies: 'generation',
+        choices: [
+          { value: 'bosses', label: 'Bosses' },
+          { value: 'items', label: 'Items' },
+        ],
+      }),
+      field('log_network', 'Log network traffic', {
+        group: 'advanced',
+        kind: 'bool',
+        applies: 'start',
+        warning: 'Very large logs.',
+      }),
+    ],
+  }
+
+  it('saves the settings and says which applied at once', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/settings' && init?.method === 'PUT') {
+        const values = JSON.parse(String(init.body)) as Record<string, unknown>
+        return Promise.resolve(Response.json({ values, applied_now: ['hint_cost'] }))
+      }
+      if (url === '/api/settings') return Promise.resolve(Response.json(page))
+      return Promise.resolve(Response.json([]))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/settings')
+
+    const hintCost = await screen.findByRole('textbox', { name: /Hint cost/ })
+    expect(screen.getAllByText('Live').length).toBeGreaterThan(0)
+    await userEvent.clear(hintCost)
+    await userEvent.type(hintCost, '25')
+    await userEvent.click(screen.getByRole('combobox', { name: /Spoiler log/ }))
+    await userEvent.click(await screen.findByRole('option', { name: 'None' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Items' }))
+    expect(screen.queryByRole('switch', { name: /Log network traffic/ })).toBeNull() // collapsed
+    await userEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+    await userEvent.click(screen.getByRole('switch', { name: /Log network traffic/ }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+    expect(
+      await screen.findByText(/Applied to the running server now: Hint cost\./),
+    ).toBeInTheDocument()
+    const put = fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')
+    expect(JSON.parse(String(put?.[1]?.body))).toEqual({
+      hint_cost: 25,
+      spoiler: 0,
+      plando_options: ['bosses', 'items'],
+      log_network: true,
+    })
+  })
+
+  it('shows a validation error from the server', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input) === '/api/settings' && init?.method === 'PUT')
+          return Promise.resolve(
+            Response.json(
+              {
+                detail: [
+                  { loc: ['body', 'hint_cost'], msg: 'Input should be less than or equal to 100' },
+                ],
+              },
+              { status: 422 },
+            ),
+          )
+        if (String(input) === '/api/settings') return Promise.resolve(Response.json(page))
+        return Promise.resolve(Response.json([]))
+      }),
+    )
+    renderRoute('/settings')
+    await userEvent.click(await screen.findByRole('button', { name: 'Save settings' }))
+    expect(
+      await screen.findByText('hint_cost: Input should be less than or equal to 100'),
+    ).toBeInTheDocument()
+  })
+})
+
 describe('spoiler log', () => {
   it('asks first, then shows the log with a line filter', async () => {
     const generatedGame = { ...openGame, state: 'generated', actions: ['discard-output', 'start'] }

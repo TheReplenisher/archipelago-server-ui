@@ -167,6 +167,16 @@ curl -fsS "$base/game/spoiler.txt" | head -c 200 | grep -q "Archipelago Version"
     || { echo "spoiler log unreadable"; exit 1; }
 echo "generation: ok ($zip)"
 
+echo "--- settings: saved, then MultiServer reads them from host.yaml at start"
+settings() {  # settings '<python dict of changes>': PUT the settings with those changed
+    curl -fsS "$base/settings" | python3 -c "
+import json, sys
+values = json.load(sys.stdin)['values']
+values.update($1)
+print(json.dumps(values))" | curl -fsS -X PUT -H 'Content-Type: application/json' -d @- "$base/settings"
+}
+settings '{"password": "compose pw", "hint_cost": 20}' >/dev/null || { echo "settings not saved"; exit 1; }
+
 echo "--- server control: real MultiServer starts, answers on the game port, saves, stops"
 curl -fsS -X POST "$base/game/start" | grep -q '"state":"running"' || { echo "start failed"; exit 1; }
 for _ in $(seq 90); do
@@ -222,6 +232,22 @@ py server <<'PY' || { echo "the /send never reached MultiServer"; exit 1; }
 assert "Cheat console: sending" in open("/data/game/logs/server.log").read()
 PY
 echo "console: ok ($send)"
+py server <<'PY' || { echo "MultiServer didn't read host.yaml"; exit 1; }
+log = open("/data/game/logs/server.log").read()
+assert "(Password: compose pw)" in log, log[-2000:]
+PY
+settings '{"hint_cost": 30}' | grep -q '"applied_now":\["hint_cost"\]' \
+    || { echo "live setting not applied"; exit 1; }
+for _ in $(seq 20); do
+    py server <<'PY' >/dev/null 2>&1 && break
+assert "Set option hint_cost to 30" in open("/data/game/logs/server.log").read()
+PY
+    sleep 1
+done
+py server <<'PY' || { echo "the live setting never reached MultiServer"; exit 1; }
+assert "Set option hint_cost to 30" in open("/data/game/logs/server.log").read()
+PY
+echo "settings: ok (host.yaml at start, /option live)"
 py web <<'PY' || { echo "server feed incomplete"; exit 1; }
 import asyncio, json
 import websockets

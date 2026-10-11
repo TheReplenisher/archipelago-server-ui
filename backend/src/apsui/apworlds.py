@@ -24,6 +24,7 @@ from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from apsui import host_settings
 from apsui.apworld_inspect import MAX_APWORLD_BYTES, InspectionError, inspect_apworld
 from apsui.config import Settings
 from apsui.jobs import JobQueue
@@ -141,7 +142,7 @@ def finish_apworld(session: Session, job: Job, _job_dir: Path, *, settings: Sett
         return
     apworld.checked_at = datetime.now(UTC)
     try:
-        _finish(apworld, job, settings)
+        _finish(session, apworld, job, settings)
     except Exception:
         log.exception("finishing apworld %s failed", apworld.id)
         _reject(
@@ -149,7 +150,7 @@ def finish_apworld(session: Session, job: Job, _job_dir: Path, *, settings: Sett
         )
 
 
-def _finish(apworld: Apworld, job: Job, settings: Settings) -> None:
+def _finish(session: Session, apworld: Apworld, job: Job, settings: Settings) -> None:
     if job.status != "ok":
         apworld.import_result = job.result
         _reject(settings, apworld, "check-failed", "The import test didn't finish")
@@ -167,7 +168,8 @@ def _finish(apworld: Apworld, job: Job, settings: Settings) -> None:
         _reject(settings, apworld, "import-failed", f"The apworld failed to load: {message}")
         return
     apworld.status = "pending"
-    if settings.apworld_approval == "auto" and result.replaces_builtin is None:
+    auto = host_settings.load(session, settings).apworld_approval == "auto"
+    if auto and result.replaces_builtin is None:
         _approve(settings, apworld)
 
 

@@ -8,8 +8,8 @@ items and hints, and finished games are archived.
 
 > **Status: Alpha 1 in progress.** The admin can run a game end to end: upload and check
 > YAMLs and apworlds, generate, start, save and stop the server, send it commands from the
-> console and watch its output in the server feed. The slot view, settings page and
-> archives are still to come. See [DESIGN.md](DESIGN.md) for the plan and
+> console, watch its output in the server feed and change its settings. The slot view
+> and archives are still to come. See [DESIGN.md](DESIGN.md) for the plan and
 > [ROADMAP.md](ROADMAP.md) for what comes when.
 
 **Unofficial.** This project is not affiliated with or endorsed by the Archipelago project.
@@ -79,6 +79,11 @@ Everything is on the **Admin** tab.
    lists from the game), or type any `/command`, or a message to every player. The up
    and down arrows recall what you sent. Its replies appear in the **Server feed** below,
    with everything else MultiServer prints, live.
+
+The **Settings** tab holds the server's host.yaml settings (room password, release and
+collect, hints, idle stop), the generation settings (spoiler, race, plando) and the upload
+rules (slot limit, apworld approval). The ones marked *Live* change a running server at
+once; the rest apply at the next start, generation or upload.
 
 The **Spoiler log** button on the same card asks "Are you sure?" before showing anything.
 The **Health** tab shows each service, the ports, disk use and the Archipelago version.

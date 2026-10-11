@@ -47,6 +47,7 @@ STOP_TIMEOUT = 30.0
 """Seconds MultiServer gets to save and exit before it is terminated."""
 LOG_TAIL_LINES = 40
 READY_MARKER = "Hosting game at"
+IDLE_MARKER = "Shutting down due to inactivity"  # auto_shutdown (#25)
 MAX_COMMAND_CHARS = 1000
 
 
@@ -56,7 +57,8 @@ def error(code: str, message: str) -> dict[str, Any]:
 
 class Supervisor:
     """States: stopped, starting (loading worlds and the multidata), running, stopping,
-    crashed (exited without being asked to; see log_tail)."""
+    idle (stopped itself after host.yaml's auto_shutdown), crashed (exited without being
+    asked to; see log_tail)."""
 
     def __init__(
         self,
@@ -204,6 +206,10 @@ class Supervisor:
                     self.state = "running"
         self.exit_code = await process.wait()
         if process is self.process and self.state != "stopping":
+            if self.exit_code == 0 and any(IDLE_MARKER in line for line in self.log_tail):
+                log.info("MultiServer stopped itself after its idle time")
+                self.state = "idle"
+                return
             log.warning("MultiServer exited unexpectedly with %s", self.exit_code)
             self.state = "crashed"
 

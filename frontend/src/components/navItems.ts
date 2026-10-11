@@ -1,4 +1,10 @@
-import { IconHeartbeat, IconShieldCog, IconUser, type Icon } from '@tabler/icons-react'
+import {
+  IconHeartbeat,
+  IconSettings,
+  IconShieldCog,
+  IconUser,
+  type Icon,
+} from '@tabler/icons-react'
 
 export interface NavItem {
   label: string
@@ -9,5 +15,6 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { label: 'Player', to: '/player', icon: IconUser },
   { label: 'Admin', to: '/admin', icon: IconShieldCog },
+  { label: 'Settings', to: '/settings', icon: IconSettings },
   { label: 'Health', to: '/health', icon: IconHeartbeat },
 ]
