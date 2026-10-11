@@ -98,3 +98,23 @@ CI publishes `ghcr.io/thereplenisher/archipelago-server-ui` (amd64 + arm64):
 | push to `main` | `edge`, `sha-<short sha>` |
 | tag `v1.2.3` | `1.2.3`, `latest`, `sha-<short sha>` |
 | pre-release tag `v0.1.0-alpha.1` | `0.1.0-alpha.1`, `sha-<short sha>` (never `latest`) |
+
+### Before tagging a release
+
+1. **Version:** `version` in `backend/`, `worker/` and `server/pyproject.toml` (PEP 440,
+   e.g. `0.1.0a1`) and `frontend/package.json` (`0.1.0-alpha.1`); refresh the lock files.
+2. **Human test pass** on `main`, with a checklist issue like #102.
+3. **Emulated arm64 run** (#60) of the image CI built for `main`'s head, recorded on the
+   release PR. Native arm64 CI runs the same tests; this one is the maintainer's own check.
+
+   ```sh
+   podman pull --platform linux/arm64 ghcr.io/thereplenisher/archipelago-server-ui:sha-<short sha>
+   podman tag ghcr.io/thereplenisher/archipelago-server-ui:sha-<short sha> apsui:arm64
+   APSUI_TEST_WAIT_SCALE=15 CONTAINER=podman docker/smoke-test.sh apsui:arm64 <AP version>
+   APSUI_TEST_WAIT_SCALE=15 docker/compose-test.sh localhost/apsui:arm64
+   ```
+
+   It needs `qemu-user-static`. The compose test covers a 2-slot generation, the running
+   server, a slot login, the console and the feed; it takes about 15 minutes emulated.
+4. **Tag** `vX.Y.Z[-pre]` on the merge commit, then publish a GitHub release (pre-release
+   for alpha and beta) with the notes.
