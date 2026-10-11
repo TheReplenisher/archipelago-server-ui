@@ -7,8 +7,8 @@ the server from a console with command assistance, players follow their own slot
 items and hints, and finished games are archived.
 
 > **Status: Alpha 1 in progress.** The admin can run a game end to end: upload and check
-> YAMLs and apworlds, generate, and start, save and stop the server. The console, server
-> feed, slot view, settings page and archives are still to come. See [DESIGN.md](DESIGN.md)
+> YAMLs and apworlds, generate, start, save and stop the server, and send it commands from
+> the console. The server feed, slot view, settings page and archives are still to come. See [DESIGN.md](DESIGN.md)
 > for the plan and [ROADMAP.md](ROADMAP.md) for what comes when.
 
 **Unofficial.** This project is not affiliated with or endorsed by the Archipelago project.
