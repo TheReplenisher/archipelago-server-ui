@@ -767,3 +767,38 @@ covers the login form and the player pages.
 
 The README covers installation, first run, reverse proxy and HTTPS, ports, upgrades,
 backups and uninstalling.
+
+### The LXC install, decided while building it (#14)
+
+- **`lxc/install.sh`, run as root inside the container,** installs from source: the repo at a
+  git ref (`--ref`, default `main`), Archipelago at the Dockerfile's `AP_VERSION`, Python 3.12
+  through uv (as the image), and the UI built with a Node.js download that is removed
+  afterwards. uv and Node are checked against their published SHA-256 sums. The image's own
+  `docker/install-archipelago.sh` installs AP's requirements, so both installs get the same.
+- **The same layout as the image:** `/opt/apsui` (web venv, UI, command catalog, built-in
+  world map), `/opt/archipelago` and `/opt/archipelago-venv`, all owned by root and read-only
+  to the services.
+- **The same separation as the Compose volumes,** by user and group instead of mounts:
+
+  | Folder | Owner, mode | Who |
+  |---|---|---|
+  | `/var/lib/apsui/data` | `apsui-web`, 0700 | web only (database, library, archives, uploads) |
+  | `/var/lib/apsui/game` | `apsui-web:apsui-game`, 2770 | web and server |
+  | `/var/lib/apsui/jobs` | `apsui-web:apsui-jobs`, 2770 | web and worker |
+  | `/run/apsui` | `apsui-server:apsui-game`, 0770 | the sockets: server, and web through the group |
+
+  Every service runs with `UMask=0007`, so what one writes the other can read. The game
+  folder is set apart with `APSUI_GAME_DIR` (the web service reads it too now).
+- **systemd does the sandboxing:** all three have `NoNewPrivileges`, `ProtectSystem=strict`
+  with only their own folders writable, `ProtectHome`, `PrivateTmp`, `PrivateDevices`, and
+  memory and task limits (web 512M, worker 2G and 2 CPUs, server 1G, as in Compose). The
+  worker adds `DynamicUser` (a throwaway user) and `PrivateNetwork` (no network at all).
+  The container needs nesting for these, which Proxmox turns on for unprivileged ones.
+- **Settings** are `/etc/apsui/apsui.env`, written once and kept; what the install itself
+  sets (the AP version, the installed ref) is `/opt/apsui/install.env`.
+- **Upgrade is running the script again.** It refuses while the game is running or
+  generating, builds everything it can before stopping the services, moves the old install
+  aside rather than deleting it, and puts it back if the rest fails. A venv can't be moved,
+  so the venvs are built in place. `--uninstall` removes the install and keeps the data;
+  `--purge` deletes that too.
+- The health page shows `lxc` isolation, and the ports the services listen on.

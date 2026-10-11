@@ -148,8 +148,10 @@ def _finish(
     target_dir = output_dir(settings)
     shutil.rmtree(target_dir, ignore_errors=True)
     target_dir.mkdir(parents=True)
-    # The job queue and game/ are separate volumes under Compose: move, not rename.
-    shutil.move(source, target_dir / output.zip)
+    # Copied, not moved: a rename would keep the worker's file group under LXC, where the
+    # server service couldn't read it (#14); under Compose they're separate volumes anyway.
+    shutil.copyfile(source, target_dir / output.zip)
+    source.unlink()
     names = safe_output_files(job_dir).get(console.NAMES_FILE)
     if names is not None:
         console.store_names(names, target_dir)

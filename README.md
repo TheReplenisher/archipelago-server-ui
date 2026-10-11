@@ -60,9 +60,37 @@ reach it through a name of its own (DNS rebinding). IP addresses and local names
 such as `nas.lan` or your reverse proxy's domain, list it: `APSUI_ALLOWED_HOSTS=nas.lan`.
 `*.example.com` covers its subdomains. Until you do, the page says which name to add.
 
-### Proxmox LXC
+## Install in a Proxmox LXC
 
-An install script to run inside a fresh Debian LXC is coming in Alpha 1 (#14).
+The same three services, as systemd units, installed by a script you run **inside** a fresh
+Debian 12 or 13 container (amd64 or arm64).
+
+1. In Proxmox, create a container from the `debian-13-standard` (or 12) template:
+   unprivileged with **nesting** on (the default for unprivileged containers), 2 CPU cores,
+   **2 GB** of memory and 8 GB of disk or more. It needs internet access while installing.
+2. In the container's console, as root:
+
+   ```sh
+   apt-get update && apt-get install -y curl
+   curl -fsSLO https://raw.githubusercontent.com/TheReplenisher/archipelago-server-ui/main/lxc/install.sh
+   bash install.sh
+   ```
+
+   It takes a while (it builds Archipelago's requirements). At the end it prints the
+   address of the admin tab: `http://<container address>:8000/admin`.
+
+`bash install.sh --ref <tag>` installs a given release instead of the latest `main`.
+
+| Service | Runs as | Can write to |
+|---|---|---|
+| `apsui-web` (UI and API) | `apsui-web` | `/var/lib/apsui/data`, `game`, `jobs` |
+| `apsui-worker` (checks, generation) | a throwaway user (`DynamicUser`), **no network** | `/var/lib/apsui/jobs` |
+| `apsui-server` (MultiServer) | `apsui-server` | `/var/lib/apsui/game` |
+
+**Settings** are in `/etc/apsui/apsui.env`: the web and game ports (`APSUI_PORT`,
+`APSUI_GAME_PORT`), `APSUI_ALLOWED_HOSTS` (above), and the trusted reverse proxy
+(`APSUI_FORWARDED_ALLOW_IPS`). After changing it: `systemctl restart apsui-server apsui-web`.
+Logs: `journalctl -u apsui-web -u apsui-worker -u apsui-server`.
 
 ## First run
 
@@ -174,6 +202,11 @@ docker compose pull
 docker compose up -d
 ```
 
+In an LXC, run the install script again (`bash install.sh`, or `--ref <tag>`). It refuses
+while a game is running or generating, builds everything before stopping the services,
+and puts the previous install back if the upgrade fails. `/var/lib/apsui` and
+`/etc/apsui/apsui.env` are kept.
+
 Database migrations run when the web service starts. Your data lives in the stack's
 volumes (database, apworld library and archives; job queue; current game; control
 socket), which an upgrade keeps. The default image tag, `edge`, is the latest build of
@@ -187,6 +220,15 @@ docker compose down      # removes the containers and networks; keeps your data
 docker compose down -v   # also deletes the volumes: every game, upload, apworld and archive
 docker image rm ghcr.io/thereplenisher/archipelago-server-ui:edge
 ```
+
+In an LXC:
+
+```sh
+bash install.sh --uninstall           # removes the services and the install; keeps your data
+bash install.sh --uninstall --purge   # also deletes /var/lib/apsui and /etc/apsui
+```
+
+Or delete the container.
 
 ## Security
 

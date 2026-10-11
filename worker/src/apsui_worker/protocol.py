@@ -209,10 +209,25 @@ class JobResult:
             raise ProtocolError(f"malformed job result: {exc}") from exc
 
 
+def _umask() -> int:
+    mask = os.umask(0)
+    os.umask(mask)
+    return mask
+
+
+_UMASK = _umask()
+"""Read once, at import: os.umask() can only be read by setting it."""
+
+
 def write_json_atomic(path: Path, data: object) -> None:
-    """Write, flush and rename, so a reader never sees a partial file."""
+    """Write, flush and rename, so a reader never sees a partial file.
+
+    The file gets the permissions the process's umask allows, as open() would give it, not
+    mkstemp's owner-only ones: under LXC the web service and the worker are different users
+    sharing a group (#14)."""
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
     try:
+        os.fchmod(fd, 0o666 & ~_UMASK)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=1)
             f.flush()

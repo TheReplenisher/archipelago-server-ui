@@ -159,3 +159,20 @@ def test_heartbeat_age(dirs: JobDirs) -> None:
     dirs.beat()
     age = dirs.heartbeat_age()
     assert age is not None and age < 5
+
+
+def test_json_files_follow_the_umask(tmp_path: Path) -> None:
+    """mkstemp makes owner-only files; under LXC the web service and the worker share a
+    group instead of a user, so spec and result files must be group-readable (#14)."""
+    import subprocess
+    import sys
+
+    target = tmp_path / "result.json"
+    script = (
+        "import os, sys; os.umask(0o007)\n"
+        "from pathlib import Path\n"
+        "from apsui_worker.protocol import write_json_atomic\n"
+        "write_json_atomic(Path(sys.argv[1]), {'ok': True})\n"
+    )
+    subprocess.run([sys.executable, "-c", script, str(target)], check=True)  # noqa: S603
+    assert target.stat().st_mode & 0o777 == 0o660

@@ -1,0 +1,45 @@
+# Archipelago Server UI: the web service (UI, API, database). Installed by lxc/install.sh.
+# Never imports Archipelago world code; holds the database and the apworld library.
+[Unit]
+Description=Archipelago Server UI: web
+Documentation=https://github.com/TheReplenisher/archipelago-server-ui
+After=network-online.target apsui-server.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=apsui-web
+Group=apsui-web
+# The game folder and /run/apsui with the server, the job queue with the worker.
+SupplementaryGroups=apsui-game apsui-jobs
+EnvironmentFile=/etc/apsui/apsui.env
+EnvironmentFile=/opt/apsui/install.env
+Environment=APSUI_DATA_DIR=/var/lib/apsui/data
+Environment=APSUI_JOBS_DIR=/var/lib/apsui/jobs
+Environment=APSUI_GAME_DIR=/var/lib/apsui/game
+Environment=APSUI_STATIC_DIR=/opt/apsui/static
+Environment=APSUI_COMMAND_CATALOG=/opt/apsui/commands.json
+Environment=APSUI_ISOLATION=lxc
+Environment=PYTHONUNBUFFERED=1
+# The health page shows the ports players and browsers use: here, the ones it listens on.
+ExecStart=/usr/bin/env APSUI_PUBLIC_WEB_PORT=${APSUI_PORT} APSUI_PUBLIC_GAME_PORT=${APSUI_GAME_PORT} /opt/apsui/venv/bin/apsui-web
+Restart=on-failure
+RestartSec=5
+# Files it makes are the group's too: the server reads the game, the worker its jobs.
+UMask=0007
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/apsui/data /var/lib/apsui/game /var/lib/apsui/jobs
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=512M
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target
