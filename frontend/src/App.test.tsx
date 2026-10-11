@@ -610,6 +610,84 @@ describe('server control', () => {
   })
 })
 
+describe('console', () => {
+  const runningGame = { ...openGame, state: 'running', actions: ['stop'] }
+  const arg = (name: string, kind: string, rest = false) => ({
+    name,
+    kind,
+    required: true,
+    rest,
+    default: null,
+    choices: [],
+  })
+  const commands = [
+    {
+      name: 'send',
+      help: 'Sends an item to the specified player',
+      raw: false,
+      args: [arg('player_name', 'player'), arg('item_name', 'item', true)],
+    },
+    { name: 'release', help: 'Release a player', raw: true, args: [arg('player_name', 'player')] },
+  ]
+  const names = {
+    players: [
+      { slot: 1, name: 'Knight', game: 'APQuest' },
+      { slot: 2, name: 'Big Hornet', game: 'Hollow Knight' },
+    ],
+    games: {
+      APQuest: { items: ['Hammer', 'Sword'], locations: [] },
+      'Hollow Knight': { items: ['Mantis Claw', 'Monarch Wings'], locations: [] },
+    },
+  }
+
+  it('builds a command from the game names, quoted the way AP reads it', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/game') return Promise.resolve(Response.json(runningGame))
+      if (url === '/api/server')
+        return Promise.resolve(Response.json({ reachable: true, state: 'running', port: 38281 }))
+      if (url === '/api/console/commands') return Promise.resolve(Response.json(commands))
+      if (url === '/api/console/names') return Promise.resolve(Response.json(names))
+      if (url === '/api/server/command' && init?.method === 'POST')
+        return Promise.resolve(Response.json({ reachable: true, state: 'running' }))
+      if (url.startsWith('/api/') && url !== '/api/health')
+        return Promise.resolve(Response.json([]))
+      return okHealth()
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+    const pickOption = async (label: string, option: string) => {
+      await userEvent.click(await screen.findByRole('combobox', { name: label }))
+      await userEvent.click(await screen.findByRole('option', { name: option }))
+    }
+    const line = await screen.findByRole('textbox', { name: 'Console' })
+
+    await pickOption('Command', '/send')
+    expect(line).toHaveValue('/send')
+    expect(screen.getByRole('combobox', { name: 'Item' })).toBeDisabled()
+    await pickOption('Player', 'Big Hornet')
+    await userEvent.click(screen.getByRole('combobox', { name: 'Item' }))
+    expect(screen.queryByRole('option', { name: 'Hammer' })).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('option', { name: 'Monarch Wings' }))
+    expect(line).toHaveValue('/send "Big Hornet" "Monarch Wings"')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByLabelText('Sent commands')).toHaveTextContent(
+      '/send "Big Hornet" "Monarch Wings"',
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/server/command',
+      expect.objectContaining({
+        body: JSON.stringify({ text: '/send "Big Hornet" "Monarch Wings"' }),
+      }),
+    )
+
+    await pickOption('Command', '/release')
+    await pickOption('Player', 'Big Hornet')
+    expect(line).toHaveValue('/release Big Hornet')
+  })
+})
+
 describe('spoiler log', () => {
   it('asks first, then shows the log with a line filter', async () => {
     const generatedGame = { ...openGame, state: 'generated', actions: ['discard-output', 'start'] }

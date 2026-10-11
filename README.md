@@ -73,9 +73,10 @@ Everything is on the **Admin** tab.
    **Current game** card and send it to them.
 5. **Save** writes the save file without stopping; **Stop server** saves and shuts down,
    and **Start server** resumes from the save.
-6. While the server runs, the **Console** box sends a line to MultiServer's own console:
-   a `/command` such as `/players` or `/send`, or a message to every player. Its
-   replies go to the server's log for now.
+6. While the server runs, the **console** sends a line to MultiServer's own console: pick
+   a **Command** and fill in its arguments (players, items and locations are searchable
+   lists from the game), or type any `/command`, or a message to every player. The up
+   and down arrows recall what you sent. Its replies go to the server's log for now.
 
 The **Spoiler log** button on the same card asks "Are you sure?" before showing anything.
 The **Health** tab shows each service, the ports, disk use and the Archipelago version.

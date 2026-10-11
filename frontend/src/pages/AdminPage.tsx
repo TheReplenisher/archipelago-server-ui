@@ -20,7 +20,7 @@ export function AdminPage() {
       <UploadLog />
       <BackendStatus />
       <Text c="dimmed">
-        Generation, the console and settings will appear here as Alpha 1 is built.
+        The settings, server feed and archives will appear here as Alpha 1 is built.
       </Text>
     </Stack>
   )
