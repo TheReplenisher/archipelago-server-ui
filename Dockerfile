@@ -36,6 +36,10 @@ RUN UV_PROJECT_ENVIRONMENT=/opt/apsui/venv uv sync --locked --no-dev --no-editab
 
 # worker and server services: standard library only, run with Archipelago's environment
 RUN uv pip install --python /opt/archipelago-venv/bin/python --no-deps /src/worker /src/server
+# The admin console's command catalog, from the pinned MultiServer's own handlers (#26).
+# Parsed, not imported; it fails the build if the argument map has gone stale.
+RUN /opt/archipelago-venv/bin/python -m apsui_server.commands \
+    /opt/archipelago/MultiServer.py /opt/apsui/commands.json
 
 # ---- runtime
 FROM python:${PYTHON_VERSION}-slim-trixie
@@ -50,6 +54,7 @@ RUN groupadd --system --gid 10001 apsui \
  && install -d -o apsui -g apsui -m 0770 /run/apsui
 
 COPY --from=build /opt/apsui/venv /opt/apsui/venv
+COPY --from=build /opt/apsui/commands.json /opt/apsui/commands.json
 COPY --from=build /opt/archipelago-venv /opt/archipelago-venv
 COPY --from=build /opt/archipelago /opt/archipelago
 COPY --from=frontend /src/frontend/dist /opt/apsui/static

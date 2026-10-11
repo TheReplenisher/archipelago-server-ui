@@ -22,6 +22,12 @@ for _ in $(seq 30); do
 done
 curl -fsS "http://127.0.0.1:$port/api/health" | grep -q '"status":"ok"'
 curl -fsS "http://127.0.0.1:$port/admin" | grep -q '<div id="root">'
+curl -fsS "http://127.0.0.1:$port/api/console/commands" | python3 -c '
+import json, sys
+commands = {c["name"]: c for c in json.load(sys.stdin)}
+assert [a["kind"] for a in commands["send"]["args"]] == ["player", "item"], commands.get("send")
+assert "exit" not in commands, "a refused command is offered"
+print(f"command catalog: {len(commands)} commands")' || { echo "no command catalog"; exit 1; }
 
 echo "--- archipelago (no network, read-only; /data writable, as the volume would be)"
 "$engine" run --rm -i --network none --read-only --tmpfs /tmp --tmpfs /data:mode=1777 \

@@ -425,12 +425,31 @@ Decided while building it (#23):
 - **The command list is generated automatically** from the pinned AP version's command
   handlers, then given a hand-maintained map of argument types. This keeps it correct
   when AP is upgraded.
-- Decided while building the first part (#26): `POST /api/server/command` sends one
-  line to MultiServer's console on stdin, exactly as if typed there (a `/command`, or
-  chat as the server). The supervisor takes a single printable line of up to 1000
-  characters, only while the server is running, so a newline can't smuggle in a second
-  command. `/exit` is refused in favour of Stop, which saves first. Its output goes to
-  MultiServer's log; showing it live is the feed (#27).
+- Decided while building it (#26):
+  - **Sending:** `POST /api/server/command` sends one line to MultiServer's console on
+    stdin, exactly as if typed there (a `/command`, or chat as the server). The
+    supervisor takes a single printable line of up to 1000 characters, only while the
+    server is running, so a newline can't smuggle in a second command. `/exit` is
+    refused in favour of Stop, which saves first. The output goes to MultiServer's log;
+    showing it live is the feed (#27).
+  - **The catalog is built into the image** by parsing, not importing, the pinned
+    `MultiServer.py`: `ServerCommandProcessor`'s commands as AP's `CommandMeta` collects
+    them, each with its help text, whether it takes its text raw, and its arguments
+    (default, and whether one takes the rest of the line). The hand-maintained map in
+    `apsui_server/commands.py` says which arguments are players, items, locations,
+    numbers or server options (`/option`'s names come from `Context.simple_options`). A
+    mapped argument that no longer exists fails the image build. Refused commands aren't
+    offered.
+  - **The names come from generation:** the generate job writes each slot's name and
+    game, and each game's item and location names (its data package), as `names.json`.
+    The web service parses it strictly and keeps it beside the output zip, so it goes
+    with the output. Without it the game still runs, and those arguments are free text.
+  - **The built line follows AP's own parsing:** a command's words are split as a shell
+    would (`shlex`), so a name with spaces is quoted; a raw command gets the rest of the
+    line as it is, so nothing is quoted.
+  - The searchable lists show the first 100 matches as you type, so a game with
+    thousands of items stays quick. The up and down arrows recall the last 20 lines sent
+    (in the page, not saved).
 
 ### Server feed (decided in #6: hybrid)
 

@@ -53,13 +53,20 @@ def generated(players: list[str], seed_name: str = "12345") -> dict[str, Any]:
 
 
 def finish_with_zip(
-    client: TestClient, players: list[str], data: bytes | None = None, seed_name: str = "12345"
+    client: TestClient,
+    players: list[str],
+    data: bytes | None = None,
+    seed_name: str = "12345",
+    extra: dict[str, bytes] | None = None,
 ) -> list[dict[str, Any]]:
+    """Finish the generate job with AP_12345.zip, plus any `extra` output files."""
     jobs: JobQueue = client.app.state.jobs  # type: ignore[attr-defined]
     for job_id in jobs.dirs.ids(State.QUEUE):
         out = jobs.dirs.path(State.QUEUE, job_id) / OUTPUT_DIR
         out.mkdir(exist_ok=True)
         (out / "AP_12345.zip").write_bytes(output_zip() if data is None else data)
+        for name, content in (extra or {}).items():
+            (out / name).write_bytes(content)
     return worker_finishes(client, generated(players, seed_name))
 
 

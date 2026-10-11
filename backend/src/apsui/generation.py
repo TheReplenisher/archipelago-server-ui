@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from apsui import console
 from apsui.apworlds import library_path
 from apsui.config import Settings
 from apsui.jobs import JobQueue, safe_output_files
@@ -147,6 +148,9 @@ def _finish(
     target_dir.mkdir(parents=True)
     # The job queue and game/ are separate volumes under Compose: move, not rename.
     shutil.move(source, target_dir / output.zip)
+    names = safe_output_files(job_dir).get(console.NAMES_FILE)
+    if names is not None:
+        console.store_names(names, target_dir)
     generation.status, generation.finished_at = "ok", datetime.now(UTC)
     generation.seed_name, generation.output_file = output.seed_name, output.zip
     generation.players = output.players

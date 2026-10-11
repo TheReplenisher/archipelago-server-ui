@@ -56,6 +56,10 @@ class Settings(BaseSettings):
             return value.rsplit(":", 1)[1]
         return value
 
+    command_catalog: Path | None = Path("/opt/apsui/commands.json")
+    """The admin console's command catalog, built into the image (#26). Without it the
+    console offers free text only."""
+
     static_dir: Path | None = None
     """Built frontend. Defaults to frontend/dist when running from a source checkout."""
 

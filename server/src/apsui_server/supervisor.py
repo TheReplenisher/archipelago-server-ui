@@ -27,6 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from apsui_server.commands import REFUSED
 from apsui_server.protocol import (
     DEFAULT_SOCKET,
     MAX_MESSAGE_BYTES,
@@ -173,8 +174,9 @@ class Supervisor:
             return error("bad-command", f"A command is 1 to {MAX_COMMAND_CHARS} characters")
         if not text.isprintable():  # a newline would smuggle in a second command
             return error("bad-command", "A command is a single line of text")
-        if text.split()[0].lower() == "/exit":  # AP matches commands in any case
-            return error("use-stop", "Use Stop to shut the server down: it saves first")
+        word = text.split()[0].lower()  # AP matches commands in any case
+        if word.startswith("/") and word[1:] in REFUSED:
+            return error("refused", REFUSED[word[1:]])
         if not self._alive() or self.state != "running":
             return error("not-running", "The server isn't running")
         assert self.process is not None  # noqa: S101 - _alive() checked it

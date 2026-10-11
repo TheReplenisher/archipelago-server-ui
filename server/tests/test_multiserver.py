@@ -118,7 +118,7 @@ async def test_a_console_command_reaches_multiserver(
     for text in ("/players\n/exit", "", "   ", "x" * 1001, None):
         refused = await supervisor.handle({"op": "command", "text": text})
         assert refused["error"] == "bad-command", text
-    assert (await supervisor.handle({"op": "command", "text": "/EXIT"}))["error"] == "use-stop"
+    assert (await supervisor.handle({"op": "command", "text": "/EXIT"}))["error"] == "refused"
     await supervisor.handle({"op": "stop"})
     commands = (tmp_path / "game" / "ap" / "commands.txt").read_text().splitlines()
     assert commands == ["/send Knight Hookshot", "/save", "/exit"]
