@@ -189,6 +189,17 @@ curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "s
 curl -fsS "$base/server" | grep -q '"state":"stopped"' || { echo "server not stopped"; exit 1; }
 echo "server control: ok"
 
+echo "--- health page: every service up, the published ports, compose isolation"
+curl -fsS "$base/health/details" | python3 -c '
+import json, os, sys
+h = json.load(sys.stdin)
+assert all(s["up"] for s in h["services"]), h["services"]
+assert (h["isolation"], h["isolation_warning"]) == ("compose", None), h
+assert [p["port"] for p in h["ports"]] == [int(os.environ["APSUI_WEB_PORT"]), int(os.environ["APSUI_GAME_PORT"])], h
+assert {d["name"] for d in h["disks"]} == {"Data", "Job queue", "Current game"}, h
+' || { echo "health details wrong: $(curl -fsS "$base/health/details")"; exit 1; }
+echo "health page: ok"
+
 # Checks run inside every service.
 common_checks='
 import os, sys

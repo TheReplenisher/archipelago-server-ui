@@ -250,3 +250,16 @@ export interface ServerStatus {
 
 export const getServer = (signal?: AbortSignal) => getJson<ServerStatus>('/server', { signal })
 export const saveServer = () => postJson<ServerStatus>('/server/save')
+
+export interface HealthDetails {
+  version: string
+  archipelago_version: string | null
+  isolation: string
+  isolation_warning: string | null
+  services: { name: 'web' | 'worker' | 'server'; up: boolean; detail: string }[]
+  ports: { name: string; port: number | null }[]
+  disks: { name: string; path: string; total: number; used: number; free: number }[]
+}
+
+export const getHealthDetails = (signal?: AbortSignal) =>
+  getJson<HealthDetails>('/health/details', { signal })

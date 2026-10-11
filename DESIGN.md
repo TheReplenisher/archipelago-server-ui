@@ -545,6 +545,13 @@ The tracker data comes from an AP-protocol connection made as that slot with the
 - **Audit log (Alpha 2):** every admin action, with who did it and when.
 - **Health page (Alpha 1):** whether each service is up, ports, disk use, the AP version,
   and the isolation mode.
+  - Decided while building it (#31): the web service judges the worker by its heartbeat
+    file (down after 30 seconds of silence) and shows the job queue, and the server by
+    the supervisor's answer on the control socket. The containers can't see their own
+    published ports or how they are isolated, so Compose passes them in
+    (`APSUI_PUBLIC_WEB_PORT`, `APSUI_PUBLIC_GAME_PORT`, `APSUI_ISOLATION=compose`).
+    Anything other than `compose` or `lxc` shows a reduced-isolation warning; a plain
+    development run is `none`.
 - **Backup and restore (Alpha 2):** the app database, library and archives.
 
 ## 8. Networking and security
