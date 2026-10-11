@@ -49,7 +49,8 @@ Put any of these in a `.env` file next to `compose.yaml`, then `docker compose u
 | `APSUI_SERVER_MEMORY` | `1g` | Memory limit of the server |
 | `APSUI_WORKER_CPUS` | `2` | CPU limit of the worker |
 
-The ports must be plain numbers: the health page shows them as published.
+A port can name the host address to listen on, e.g. `APSUI_WEB_PORT=127.0.0.1:8000`
+to reach the web UI only from the same machine.
 
 ### Proxmox LXC
 
@@ -127,7 +128,9 @@ http:
 ```
 
 Replace `192.168.1.10` with the Docker host's address, and firewall port `8000` so only
-the proxy can reach it.
+the proxy can reach it. If the proxy is installed on the same machine (not in a
+container of its own), set `APSUI_WEB_PORT=127.0.0.1:8000` instead and point it at
+`127.0.0.1:8000`.
 
 ## Upgrade
 
