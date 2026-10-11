@@ -12,15 +12,15 @@ Output: {
   "detail": str | null,
 }
 
-Archipelago skips a custom apworld whose game is already loaded, and built-in worlds
-always load first. So when the game is built in, the built-in is unregistered here (this
-child process exits afterwards) and the apworld is loaded the way AP would load it.
+An apworld for a built-in game is loaded the way validation, generation and the server
+load it (apsui_worker.builtin_worlds, #77): the built-in world is hidden first. Generation's
+own modules are imported too, since a hidden built-in that one of them imports would be
+loaded after all.
 """
 
 from __future__ import annotations
 
 import shutil
-import sys
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -29,26 +29,27 @@ if TYPE_CHECKING:
 
 def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
     from apsui_worker.archipelago import custom_worlds_dir
+    from apsui_worker.builtin_worlds import builtins, load_worlds, manifest_game
     from apsui_worker.jobs import JobFailure
 
     module = params["module"]
     source = ctx.input_dir / f"{module}.apworld"
     if not source.is_file():
         raise JobFailure("input-missing", f"{module}.apworld was not supplied")
-    target = custom_worlds_dir() / source.name
+    custom = custom_worlds_dir()
+    target = custom / source.name
     shutil.copy2(source, target)
 
+    # AP 0.6.8 loads a world with an incomplete manifest anyway
+    game = manifest_game(target) or params.get("game")
+    known = builtins().get(game or "")
+    hidden = load_worlds(custom, ctx.archipelago_dir)
+
+    import Generate  # noqa: F401
+    import Main  # noqa: F401
     import Utils
     import worlds
     from worlds.AutoWorld import AutoWorldRegister
-    from worlds.Files import APWorldContainer
-
-    container = APWorldContainer(str(target))
-    try:
-        container.read()
-    except Exception:  # AP 0.6.8 loads a world with an incomplete manifest anyway
-        container.game = params.get("game")
-    game = container.game
 
     def from_this_file() -> list[str]:
         return sorted(
@@ -57,24 +58,23 @@ def run(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
             if str(target) in str(getattr(cls, "__file__", "") or "")
         )
 
-    replaces_builtin = None
-    builtin = AutoWorldRegister.world_types.get(game) if game else None
-    if builtin is not None and str(target) not in str(builtin.__file__):
-        replaces_builtin = builtin.world_version.as_simple_string()
-        # Hide the built-in world, then load this one the way worlds/__init__.py does.
-        del AutoWorldRegister.world_types[game]
-        prefix = f"worlds.{module}"
-        for name in [m for m in sys.modules if m == prefix or m.startswith(prefix + ".")]:
-            del sys.modules[name]
-        world_source = worlds.WorldSource(str(target), is_zip=True, relative=False)
-        worlds.add_apworld_spec(world_source, container)
-        world_source.load()
-
     games = from_this_file()
+    replaces_builtin = known["version"] if known else None
+    builtin = AutoWorldRegister.world_types.get(game) if game and game not in games else None
+    if replaces_builtin is None and builtin is not None:
+        # A built-in world missing from the image's map must still be flagged, so the
+        # apworld can never be approved without the admin.
+        replaces_builtin = builtin.world_version.as_simple_string()
     reason = worlds.failed_world_loads.get(module) or worlds.failed_world_loads.get(game or "")
     error = None
     if reason:
         error = reason.strip().splitlines()[-1]
+    elif builtin is not None:
+        error = (
+            f"Archipelago loads its built-in {game} anyway"
+            if game in hidden
+            else f"The built-in {game} can't be replaced in this install"
+        )
     elif not games:
         error = "The apworld loaded but registered no game"
     elif game not in games:

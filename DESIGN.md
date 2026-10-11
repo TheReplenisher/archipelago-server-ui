@@ -313,10 +313,25 @@ Decided while building it (#21):
   The same bytes can't be uploaded twice while one copy is checking, pending or in the
   library; after a rejection they can be tried again.
 - **The import test also checks that the world registers the game its manifest names.**
-- **Replacing a built-in world:** AP loads built-in worlds first and skips a custom apworld
-  whose game is already loaded. So the import test unregisters the built-in world in its
-  own process, then loads the apworld the way AP does. Validation, generation and the
-  server need the same treatment before a replacement can be used (#77).
+- **Replacing a built-in world (#77):** AP loads built-in worlds first and skips a custom
+  apworld whose game is already loaded. So wherever AP loads worlds (the import test, YAML
+  checks, generation, and MultiServer), the built-in folder of each game a supplied apworld
+  replaces is hidden from AP's scan of its worlds folder before `worlds` is first imported
+  (`apsui_worker.builtin_worlds`). AP then loads the apworld like any other custom world,
+  and builds its data package from it.
+  - Which folder holds which built-in game is only known by importing them all, so the
+    image records it when it is built (`/opt/apsui/builtin-worlds.json`).
+  - MultiServer is started through `apsui_server.multiserver`, which hides the built-ins and
+    then runs `MultiServer.py` as if started directly. With no replacement it changes
+    nothing.
+  - A hidden built-in that other code imports by name is loaded anyway (three worlds import
+    `worlds.alttp`). The import test also imports generation's own modules and rejects such
+    an apworld (*"Archipelago loads its built-in … anyway"*); generation checks again and
+    fails with `builtin-not-replaced`.
+  - Generation reports which worlds came from apworlds (`custom_worlds`).
+  - Rejected: unregistering the built-in after AP has loaded everything, as the first
+    import test did. AP's data package is already built by then, and modules the built-in
+    left behind stay imported.
 - **The approval setting** (`manual` or `auto`) is on the settings page (#25);
   `APSUI_APWORLD_APPROVAL` is only its default. The uploader is always the admin in
   Alpha 1.
@@ -361,8 +376,8 @@ Decided while building it (#22):
 - **Official worlds are labelled with the Archipelago version** (`APQuest · official ·
   AP 0.6.8`): they ship with it, and the web service can't import them to read their own
   version.
-- **Custom versions of built-in games can't be picked yet:** Archipelago would load the
-  built-in world instead (#77).
+- **A custom version of a built-in game is picked like any other apworld** (#77); the
+  upload form marks it *replaces the built-in*.
 - **`two-versions`:** one upload can't pick two apworlds for the same game.
 
 ### Upload logs (admin)
@@ -405,7 +420,8 @@ Decided while building it (#23):
   Discard output also discards the save.
 - **Before each start, the web service copies exactly the game's locked custom apworlds**
   into `/data/game/ap/Archipelago/worlds/`, the server's custom worlds folder
-  (`XDG_DATA_HOME=/data/game/ap`). Nothing else from the library reaches the server.
+  (`XDG_DATA_HOME=/data/game/ap`). Nothing else from the library reaches the server. One
+  for a built-in game replaces the built-in world (§4, #77), and the server log says so.
 - **Server states:** stopped, starting (loading worlds and the multidata, until
   MultiServer logs "Hosting game at"), running, stopping, crashed. A crash keeps the
   game Running and shows MultiServer's last lines; Stop then clears it and returns to

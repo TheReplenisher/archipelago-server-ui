@@ -5,7 +5,8 @@ description = "Server service for Archipelago Server UI: supervises MultiServer 
 license = "MIT"
 requires-python = ">=3.12"
 # Standard library only: this package is installed into Archipelago's own environment.
-dependencies = []
+# apsui-worker (also standard library only) hides the built-in worlds an apworld replaces.
+dependencies = ["apsui-worker"]
 
 # No console script, for the same reason as apsui-worker: the image provides
 # /usr/local/bin/apsui-server.
@@ -16,6 +17,9 @@ dev = [
     "pytest>=8.4",
     "ruff>=0.13",
 ]
+
+[tool.uv.sources]
+apsui-worker = { path = "../worker", editable = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -10,6 +10,9 @@ resolution-markers = [
 name = "apsui-server"
 version = "0.1.0.dev0"
 source = { editable = "." }
+dependencies = [
+    { name = "apsui-worker" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -17,6 +20,21 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+
+[package.metadata]
+requires-dist = [{ name = "apsui-worker", editable = "../worker" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.17" },
+    { name = "pytest", specifier = ">=8.4" },
+    { name = "ruff", specifier = ">=0.13" },
+]
+
+[[package]]
+name = "apsui-worker"
+version = "0.1.0.dev0"
+source = { editable = "../worker" }
 
 [package.metadata]
 
