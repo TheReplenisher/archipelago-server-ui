@@ -60,6 +60,7 @@ ACTIONS: dict[str, str] = {
     "upload_apworld": "Uploaded an apworld",
     "approve_apworld": "Approved an apworld",
     "reject_apworld": "Rejected an apworld",
+    "override_world": "Changed a game's locked version",
     # settings
     "put_settings": "Changed settings",
 }

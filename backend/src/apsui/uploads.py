@@ -29,7 +29,7 @@ from apsui import host_settings
 from apsui.config import Settings
 from apsui.jobs import JobQueue
 from apsui.lifecycle import GameState, current_game
-from apsui.models import Game, Job, Slot, Upload
+from apsui.models import Apworld, Game, Job, Slot, Upload, WorldLock
 from apsui.worlds import (
     LOCKED_MESSAGE,
     WorldError,
@@ -37,6 +37,7 @@ from apsui.worlds import (
     conflict,
     job_inputs,
     lock,
+    locks,
     release_unused,
 )
 from apsui.yaml_names import InvalidName, check_new_name, set_names
@@ -343,6 +344,73 @@ def rename(
     return upload
 
 
+def override_version(
+    session: Session, jobs: JobQueue, settings: Settings, world: str, apworld_id: int | None
+) -> WorldLock:
+    """The admin changes the world a game is locked to (#34): `apworld_id` from the
+    library, or None for the official built-in world. Every YAML that uses the game is
+    checked again with it, at once (conne's decision, 2026-10-18); the lock remembers
+    which, so the admin sees the ones that fail. Only while uploads are open."""
+    game = current_game(session)
+    if game.state != GameState.OPEN:
+        raise UploadError("uploads-closed", "Unlock uploads before changing a version", 409)
+    found = next((lk for lk in locks(session, game.id) if lk.world == world), None)
+    if found is None:
+        raise UploadError("not-locked", f"{world} isn't locked to a version", 404)
+    if apworld_id is not None:
+        apworld = session.get(Apworld, apworld_id)
+        if apworld is None or apworld.status != "approved":
+            raise UploadError("apworld-unavailable", "That apworld isn't in the library")
+        if apworld.game != world:
+            raise UploadError("wrong-game", f"That apworld is for {apworld.game}, not {world}")
+    if found.apworld_id == apworld_id:
+        raise UploadError("same-version", f"{world} already uses that version", 409)
+
+    affected = [
+        u
+        for u in session.scalars(
+            select(Upload)
+            .where(Upload.game_id == game.id, Upload.status.in_(("accepted", "needs-name")))
+            .order_by(Upload.id)
+        )
+        if world in _games_of(u)
+    ]
+    found.apworld_id, found.overridden_at = apworld_id, datetime.now(UTC)
+    found.rechecked = [u.id for u in affected]
+    resubmit = []
+    for upload in affected:
+        worlds = dict(upload.worlds or {})
+        if apworld_id is None:
+            worlds.pop(world, None)
+        else:
+            worlds[world] = apworld_id
+        upload.worlds = worlds
+        if upload.status == "accepted":  # back to the checking area, as if just uploaded
+            pending = pending_path(settings, upload)
+            pending.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(accepted_path(settings, upload), pending)
+            accepted_path(settings, upload).unlink()
+            upload.slots.clear()
+        upload.status, upload.name_problems, upload.checked_at = "pending", None, None
+        upload.error_code = upload.error_message = None
+        resubmit.append(upload)
+    session.commit()
+    for upload in resubmit:
+        _check(session, jobs, settings, upload, pending_path(settings, upload).read_bytes())
+    return found
+
+
+def _games_of(upload: Upload) -> set[str]:
+    """The games an upload's documents use, from its last check."""
+    if upload.slots:
+        return {game for slot in upload.slots for game in slot.games}
+    try:
+        check = YamlCheck.model_validate(upload.detail)
+    except ValidationError:
+        return set()
+    return {game for doc in check.documents if not doc.empty for game in doc.games}
+
+
 def cancel(session: Session, settings: Settings, upload_id: int) -> Upload:
     """Turn down an upload waiting for a name: it is rejected, and a fixed file has to be
     uploaded instead."""
@@ -404,5 +472,6 @@ def summary(upload: Upload) -> dict[str, Any]:
         "uploaded_at": upload.uploaded_at,
         "checked_at": upload.checked_at,
         "slots": [slot.name for slot in upload.slots],
+        "games": sorted(_games_of(upload)),
         "name_problems": upload.name_problems if upload.status == "needs-name" else [],
     }

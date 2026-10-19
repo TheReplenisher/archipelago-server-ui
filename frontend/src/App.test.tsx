@@ -546,6 +546,79 @@ describe('custom apworlds for a YAML', () => {
   })
 })
 
+describe('changing a locked version', () => {
+  it('asks, re-checks the YAMLs, and lists the ones that fail', async () => {
+    const v2 = {
+      id: 9,
+      label: 'Sample Game · custom · v2.0.0 · def456',
+      game: 'Sample Game',
+      status: 'approved',
+      filename: 'sample_game.apworld',
+    }
+    const accepted = (id: number, filename: string, status = 'accepted') => ({
+      id,
+      kind: 'yaml',
+      filename,
+      status,
+      error_code: status === 'rejected' ? 'option-invalid' : null,
+      error_message: status === 'rejected' ? 'Invalid value' : null,
+      uploaded_at: '2026-10-19T00:00:00Z',
+      checked_at: null,
+      slots: status === 'accepted' ? ['Knight'] : [],
+      games: ['Sample Game'],
+      name_problems: [],
+    })
+    let lock: Record<string, unknown> = {
+      world: 'Sample Game',
+      label: 'Sample Game · custom · v1.0.0 · abc123',
+      apworld_id: 4,
+      upload_id: 1,
+      overridden_at: null,
+      rechecked: [],
+    }
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/worlds/Sample%20Game/override' && init?.method === 'POST') {
+        lock = {
+          ...lock,
+          label: v2.label,
+          apworld_id: 9,
+          overridden_at: '2026-10-19T00:00:00Z',
+          rechecked: [accepted(1, 'knight.yaml'), accepted(2, 'hornet.yaml', 'rejected')],
+        }
+        return Promise.resolve(Response.json(lock, { status: 202 }))
+      }
+      if (url === '/api/apworlds') return Promise.resolve(Response.json([v2]))
+      if (url === '/api/worlds') return Promise.resolve(Response.json([lock]))
+      if (url === '/api/uploads')
+        return Promise.resolve(Response.json([accepted(1, 'knight.yaml')]))
+      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
+        return Promise.resolve(Response.json([]))
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Sample Game · custom · v1.0.0 · abc123' }),
+    )
+    expect(await screen.findByText(/1 YAML uses Sample Game/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Change and re-check' })).toBeDisabled()
+    await userEvent.click(screen.getByPlaceholderText('Pick a version'))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(
+      await within(dialog).findByRole('option', { name: v2.label, hidden: true }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Change and re-check' }))
+    expect(
+      await screen.findByText('Have to upload again: hornet.yaml (Invalid value)'),
+    ).toBeInTheDocument()
+    const [, init] = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/override'))!
+    expect(JSON.parse(String(init!.body))).toEqual({ apworld_id: 9 })
+  })
+})
+
 describe('upload log', () => {
   it('opens the full log entry from a short error code', async () => {
     const rejected = {

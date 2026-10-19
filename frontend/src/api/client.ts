@@ -135,6 +135,8 @@ export interface Upload {
   uploaded_at: string
   checked_at: string | null
   slots: string[]
+  /** The games its documents use, from its last check. */
+  games?: string[]
   name_problems: NameProblem[]
 }
 
@@ -154,7 +156,17 @@ export interface WorldLock {
   label: string
   apworld_id: number | null
   upload_id: number
+  /** When the admin last changed the version (#34). */
+  overridden_at?: string | null
+  /** The uploads that change checked again, as they are now. */
+  rechecked?: Upload[]
 }
+
+/** Change a game's locked version (#34): a library apworld, or null for the official world. */
+export const overrideWorld = (world: string, apworldId: number | null) =>
+  postJsonBody<WorldLock>(`/worlds/${encodeURIComponent(world)}/override`, {
+    apworld_id: apworldId,
+  })
 
 export const listWorlds = (signal?: AbortSignal) => getJson<WorldLock[]>('/worlds', { signal })
 

@@ -175,6 +175,10 @@ class WorldLock(Base):
     upload_id: Mapped[int] = mapped_column(ForeignKey("uploads.id"))
     """The YAML that set it."""
     locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """When the admin last changed the version (#34)."""
+    rechecked: Mapped[list[int] | None] = mapped_column(JSON)
+    """The uploads that override sent back to the worker, by ID."""
 
     apworld: Mapped[Apworld | None] = relationship()
 

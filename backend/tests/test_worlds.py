@@ -108,6 +108,8 @@ def test_a_game_without_a_pick_uses_and_locks_the_official_world(client: TestCli
             "label": "APQuest · official · AP 0.6.8",
             "apworld_id": None,
             "upload_id": 1,
+            "overridden_at": None,
+            "rechecked": [],
         }
     ]
 
@@ -187,3 +189,59 @@ def test_bad_picks_are_refused_at_upload(client: TestClient, case: str) -> None:
         picks, code = [99], "apworld-unavailable"
     body = upload(client, picks, status=400)
     assert body["detail"]["code"] == code
+
+
+def test_the_admin_overrides_a_locked_version_and_sees_who_fails(client: TestClient) -> None:
+    """#34: every YAML using the game is checked again with the new version, at once."""
+    v1, v2 = library_apworld(client, "1.0.0"), library_apworld(client, "2.0.0")
+    knight = upload(client, [v1])
+    worker_finishes(client, checked())
+    hornet = upload(client, data=YAML % b"Hornet")
+    worker_finishes(client, checked(name="Hornet"))
+    other = upload(client, data=OFFICIAL_YAML)  # another game: untouched
+    worker_finishes(client, checked("APQuest", custom=False, name="Quester"))
+
+    response = client.post("/api/worlds/Sample Game/override", json={"apworld_id": v2})
+    assert response.status_code == 202, response.text
+    lock = response.json()
+    assert (lock["apworld_id"], lock["overridden_at"] is not None) == (v2, True)
+    assert [u["id"] for u in lock["rechecked"]] == [knight["id"], hornet["id"]]
+    assert statuses(client)[knight["id"]] == ("pending", None)
+    assert statuses(client)[other["id"]] == ("accepted", None)
+
+    # The worker loads v2 for Knight; Hornet's YAML no longer validates with it.
+    def output(spec: dict[str, Any]) -> dict[str, Any]:
+        name = "Knight" if len(specs) == 0 else "Hornet"
+        specs.append(spec)
+        error = None if name == "Knight" else {"code": "option-invalid", "message": "bad"}
+        doc = {"index": 0, "empty": False, "name": name, "name_raw": name}
+        doc |= {"games": ["Sample Game"], "error": error}
+        return {"error": None, "documents": [doc], "custom_games": ["Sample Game"]}
+
+    specs: list[dict[str, Any]] = []
+    worker_finishes(client, {"validate-yaml": output})
+    assert statuses(client)[knight["id"]] == ("accepted", None)
+    assert statuses(client)[hornet["id"]] == ("rejected", "option-invalid")
+    [_, sample] = worlds(client)
+    assert [(u["id"], u["status"]) for u in sample["rechecked"]] == [
+        (knight["id"], "accepted"),
+        (hornet["id"], "rejected"),
+    ]
+    assert sample["apworld_id"] == v2
+
+
+def test_override_back_to_the_official_world_and_refusals(client: TestClient) -> None:
+    v1 = library_apworld(client)
+    upload(client, [v1])
+    worker_finishes(client, checked())
+    same = client.post("/api/worlds/Sample Game/override", json={"apworld_id": v1})
+    assert (same.status_code, same.json()["detail"]["code"]) == (409, "same-version")
+    missing = client.post("/api/worlds/Nope/override", json={"apworld_id": None})
+    assert missing.json()["detail"]["code"] == "not-locked"
+    official = client.post("/api/worlds/Sample Game/override", json={"apworld_id": None})
+    assert official.status_code == 202
+    [spec] = worker_finishes(client, checked(custom=False))
+    assert spec["inputs"] == ["upload.yaml"]  # no custom apworld this time
+    client.post("/api/game/lock")
+    closed = client.post("/api/worlds/Sample Game/override", json={"apworld_id": v1})
+    assert closed.json()["detail"]["code"] == "uploads-closed"

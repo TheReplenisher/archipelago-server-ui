@@ -11,11 +11,12 @@ from apsui.config import Settings
 from apsui.db import get_session
 from apsui.jobs import JobQueue
 from apsui.lifecycle import current_game
-from apsui.models import Slot, Upload
+from apsui.models import Slot, Upload, WorldLock
 from apsui.uploads import (
     MAX_YAML_BYTES,
     UploadError,
     cancel,
+    override_version,
     remove_upload,
     rename,
     submit_yaml,
@@ -51,6 +52,8 @@ class UploadOut(BaseModel):
     uploaded_at: datetime
     checked_at: datetime | None
     slots: list[str]
+    games: list[str] = []
+    """The games its documents use, from its last check."""
     name_problems: list[NameProblem]
     """While status is needs-name: the slots that need a new name."""
 
@@ -73,6 +76,16 @@ class WorldOut(BaseModel):
     """The library apworld, or null for the official built-in world."""
     upload_id: int
     """The YAML that locked it."""
+    overridden_at: datetime | None = None
+    """When the admin last changed the version (#34)."""
+    rechecked: list[UploadOut] = []
+    """The uploads that change sent back to the worker, as they are now: the rejected ones
+    are the slots that have to upload a YAML that works with the new version."""
+
+
+class OverrideIn(BaseModel):
+    apworld_id: int | None
+    """A library apworld for this game, or null for the official built-in world."""
 
 
 class SlotOut(BaseModel):
@@ -167,12 +180,30 @@ def list_worlds(request: Request, session: SessionDep) -> list[WorldOut]:
     """The world each game is locked to in the current game (DESIGN.md §4)."""
     game = current_game(session)
     settings: Settings = request.app.state.settings
-    return [
-        WorldOut(
-            world=lock.world,
-            label=label(settings, lock),
-            apworld_id=lock.apworld_id,
-            upload_id=lock.upload_id,
-        )
-        for lock in locks(session, game.id)
-    ]
+    return [_world_out(session, settings, lock) for lock in locks(session, game.id)]
+
+
+def _world_out(session: Session, settings: Settings, lock: WorldLock) -> WorldOut:
+    rechecked = [session.get(Upload, upload_id) for upload_id in lock.rechecked or []]
+    return WorldOut(
+        world=lock.world,
+        label=label(settings, lock),
+        apworld_id=lock.apworld_id,
+        upload_id=lock.upload_id,
+        overridden_at=lock.overridden_at,
+        rechecked=[UploadOut.model_validate(summary(u)) for u in rechecked if u is not None],
+    )
+
+
+@router.post("/worlds/{world:path}/override", status_code=202)
+def override_world(world: str, body: OverrideIn, request: Request, session: SessionDep) -> WorldOut:
+    """Change the version a game is locked to (#34), while uploads are open. Every YAML
+    using it is checked again with the new version; poll GET /api/worlds for how each
+    one came out."""
+    audit.note(request, world=world, apworld_id=body.apworld_id)
+    settings: Settings = request.app.state.settings
+    try:
+        found = override_version(session, request.app.state.jobs, settings, world, body.apworld_id)
+    except UploadError as exc:
+        raise _error(exc) from exc
+    return _world_out(session, settings, found)

@@ -416,6 +416,18 @@ Decided while building it (#22):
   upload form marks it *replaces the built-in*.
 - **`two-versions`:** one upload can't pick two apworlds for the same game.
 
+Admin override, decided while building it (#34):
+
+- **The admin changes a locked game's version** from the World versions badges on the
+  Admin tab: any approved library apworld for that game, or the official built-in world.
+  Only while uploads are Open (unlock first), so what gets generated stays settled.
+- **Every YAML using the game is checked again at once** (conne's decision,
+  2026-10-18): accepted ones and ones waiting for a name go back to the worker with the
+  new version, their slots freed meanwhile. The lock remembers which (`rechecked`) and
+  when; the Admin tab lists the ones that fail, which are the slots that have to upload
+  again. A file that was mid-check when the version changed is still checked against the
+  old one, and gets `version-locked`.
+
 ### Upload logs (admin)
 
 Every upload (YAML, apworld, and later ROM) gets a log entry containing:
