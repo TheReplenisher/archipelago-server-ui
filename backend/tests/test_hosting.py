@@ -27,6 +27,9 @@ for line in sys.stdin:
         Path(sys.argv[1]).with_suffix(".apsave").write_text("saved")
     elif line.strip() == "/exit":
         sys.exit(0)
+    elif line.strip() == "idle":  # as auto_shutdown does
+        print("Shutting down due to inactivity.", flush=True)
+        sys.exit(0)
     else:
         with Path(sys.argv[1]).with_suffix(".console").open("a") as f:
             f.write(line)
@@ -102,6 +105,21 @@ def test_a_console_command_reaches_multiserver(client: TestClient, settings: Set
         time.sleep(0.02)
     assert console.read_text() == "/players\n"
     assert server(client)["state"] == "running"
+
+
+def test_start_resumes_an_idle_server_without_leaving_running(client: TestClient) -> None:
+    """#97: no Stop then Start; and a second Start while it runs is refused (#94)."""
+    generated_game(client, "Knight")
+    client.post("/api/game/start")
+    until(client, "running")
+    response = client.post("/api/game/start")
+    assert (response.status_code, response.json()["detail"]["code"]) == (409, "already-running")
+
+    client.post("/api/server/command", json={"text": "idle"})
+    until(client, "idle")
+    resumed = client.post("/api/game/start")
+    assert (resumed.status_code, resumed.json()["state"]) == (200, "running")
+    until(client, "running")
 
 
 def test_start_needs_a_generated_game(client: TestClient) -> None:

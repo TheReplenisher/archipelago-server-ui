@@ -624,6 +624,36 @@ describe('server control', () => {
   })
 })
 
+describe('resuming the server', () => {
+  it('offers Start while the game is Running and the server stopped itself', async () => {
+    const runningGame = { ...openGame, state: 'running', actions: ['stop'] }
+    let serverState = 'idle'
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/game/start' && init?.method === 'POST') {
+        serverState = 'starting'
+        return Promise.resolve(Response.json(runningGame))
+      }
+      if (url === '/api/game') return Promise.resolve(Response.json(runningGame))
+      if (url === '/api/server')
+        return Promise.resolve(
+          Response.json({ reachable: true, state: serverState, exit_code: 0, log_tail: [] }),
+        )
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
+        return Promise.resolve(Response.json([]))
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    expect(await screen.findByText(/Start resumes it from the save/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stop server' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Start server' }))
+    expect(await screen.findByText('Server starting')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start server' })).not.toBeInTheDocument()
+  })
+})
+
 describe('console', () => {
   const runningGame = { ...openGame, state: 'running', actions: ['stop'] }
   const arg = (name: string, kind: string, rest = false) => ({

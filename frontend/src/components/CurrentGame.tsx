@@ -54,8 +54,8 @@ function ServerLine({ server }: { server: ServerStatus }) {
   if (server.state === 'idle')
     return (
       <Text size="sm" c="orange">
-        The server stopped itself after its idle time (see Settings). Stop it, then Start to resume
-        from the save.
+        The server stopped itself after its idle time (see Settings). Start resumes it from the
+        save.
       </Text>
     )
   if (server.state === 'crashed')
@@ -222,6 +222,9 @@ export function CurrentGame({ onChanged }: { onChanged?: () => void }) {
   }
 
   const info = game ? stateInfo[game.state] : null
+  // A Running game whose MultiServer stopped itself or crashed: Start resumes it (#97).
+  const resumable =
+    game?.state === 'running' && (server?.state === 'idle' || server?.state === 'crashed')
   const hasOutput = game?.state === 'generated' || game?.state === 'running'
   return (
     <Card withBorder>
@@ -250,6 +253,11 @@ export function CurrentGame({ onChanged }: { onChanged?: () => void }) {
         {hasOutput && <SpoilerLog key={`spoiler-${generations[0]?.id}`} />}
         {game && game.actions.length > 0 && (
           <Group>
+            {resumable && (
+              <Button variant="light" loading={busy} onClick={() => run('start')}>
+                {actionLabels.start}
+              </Button>
+            )}
             {game.actions.map((action) => (
               <Button key={action} variant="light" loading={busy} onClick={() => run(action)}>
                 {actionLabels[action]}

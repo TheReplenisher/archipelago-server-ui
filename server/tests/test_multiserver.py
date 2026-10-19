@@ -146,7 +146,27 @@ async def test_an_idle_shutdown_is_not_a_crash(make: Callable[..., Supervisor]) 
     await supervisor.handle({"op": "start"})
     status = await until(supervisor, "idle")
     assert status["exit_code"] == 0
+    # Start resumes it from the save, with no Stop first (#97).
+    assert (await supervisor.handle({"op": "start"}))["state"] == "starting"
+    await until(supervisor, "idle")
     assert (await supervisor.handle({"op": "stop"}))["state"] == "stopped"
+
+
+@sync
+async def test_two_starts_at_once_launch_one_multiserver(
+    make: Callable[..., Supervisor], tmp_path: Path
+) -> None:
+    """A double click or two admin tabs (#94): the second Start waits for the first, then
+    finds it running."""
+    supervisor = make()
+    first, second = await asyncio.gather(
+        supervisor.handle({"op": "start"}), supervisor.handle({"op": "start"})
+    )
+    assert (first["ok"], second.get("error")) == (True, "already-running")
+    await until(supervisor, "running")
+    await supervisor.handle({"op": "stop"})
+    log = (tmp_path / "game" / "logs" / "server.log").read_text()
+    assert log.count("Loading worlds with") == 1
 
 
 @sync

@@ -87,20 +87,24 @@ class Supervisor:
         self.log_tail: collections.deque[str] = collections.deque(maxlen=LOG_TAIL_LINES)
         self._tasks: set[asyncio.Task[None]] = set()
         self._relays = 0
+        self._lock = asyncio.Lock()
+        """Start, stop, save and command each check, then await: one at a time, so two
+        Starts at once can't both launch a MultiServer (#94)."""
 
     async def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         op = request.get("op")
         if op == "status":
             return self.status()
-        if op == "start":
-            return await self.start()
-        if op == "stop":
-            return await self.stop()
-        if op == "save":
-            return await self.save()
-        if op == "command":
+        if op not in ("start", "stop", "save", "command"):
+            return error("unknown-op", f"Unknown operation {op!r}")
+        async with self._lock:
+            if op == "start":
+                return await self.start()
+            if op == "stop":
+                return await self.stop()
+            if op == "save":
+                return await self.save()
             return await self.command(request.get("text"))
-        return error("unknown-op", f"Unknown operation {op!r}")
 
     def status(self) -> dict[str, Any]:
         return {

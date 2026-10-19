@@ -459,6 +459,10 @@ Decided while building it (#23):
 - **Start and Stop are game actions** (`POST /api/game/start`, `/stop`); Save is
   `POST /api/server/save`. If the supervisor isn't answering, nothing changes and the
   admin gets a 503.
+- **One operation at a time (#94):** the supervisor runs start, stop, save and command
+  one after another, so a second Start (a double click, two admin tabs) finds the first
+  MultiServer alive and is refused with `already-running`, rather than launching another
+  on the same port.
 
 
 ### Admin console and command assistance
@@ -587,8 +591,10 @@ Decided while building it (#23):
     which AP reads only from host.yaml, is written to the job's own user folder. The YAML
     checks use the same plando options.
   - **`auto_shutdown`:** when MultiServer stops itself after its idle time ("Shutting
-    down due to inactivity", exit 0), the server shows as *idle*, not crashed; Stop then
-    Start resumes from the save.
+    down due to inactivity", exit 0), the server shows as *idle*, not crashed. **Start**
+    then resumes it from the save without leaving Running (#97), as it does for a crashed
+    server: the web service re-writes host.yaml and the locked worlds and asks the
+    supervisor to start again.
   - **`port` is shown by the install, not set here:** under Compose the container's port
     is fixed and the published one is `APSUI_GAME_PORT` (README); LXC (#14) can revisit.
 
