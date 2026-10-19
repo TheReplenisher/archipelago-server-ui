@@ -52,15 +52,29 @@ async def _ask(
     return response
 
 
+RESUMABLE = ("stopped", "idle", "crashed")
+"""Server states in which a Running game's MultiServer isn't up, so Start resumes it."""
+
+
 async def start(session: Session, settings: Settings) -> Game:
+    """Start the server on the generated game (Generated → Running). While the game is
+    Running but MultiServer has stopped itself (idle) or crashed, Start resumes it from
+    the save without leaving Running (#97)."""
     game = current_game(session)
-    if game.state != GameState.GENERATED:
+    if game.state == GameState.RUNNING:
+        status = await _ask(settings, "status")
+        if status.get("state") not in RESUMABLE:
+            raise HostingError("already-running", "The server is already running")
+    elif game.state != GameState.GENERATED:
         raise HostingError("not-generated", "Generate the game before starting the server")
     prepare_worlds(session, settings, game)
     # MultiServer reads its defaults from host.yaml in its user folder (#25).
     user_dir = settings.game_dir / "ap" / "Archipelago"
     host_settings.write_host_yaml(host_settings.load(session, settings), user_dir)
+    # The supervisor refuses a second start while one MultiServer is alive (#94).
     await _ask(settings, "start")
+    if game.state == GameState.RUNNING:
+        return game
     try:
         return apply(session, game, Action.START)
     except TransitionError as exc:  # someone else moved the game meanwhile

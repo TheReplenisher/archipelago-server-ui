@@ -197,9 +197,9 @@ def check_name(name: object) -> str:
     if not isinstance(name, str):
         # Weighted or random names can't be logged in to (DESIGN.md §6).
         raise DocumentError("name-not-fixed", "Slot name must be one fixed name")
-    if "%" in name:
+    if any(c in name for c in "%{}"):  # AP fills these in at generation (#104)
         raise DocumentError(
-            "name-template", "Name templates like %number% aren't supported", f"name: {name!r}"
+            "name-template", "Name templates like {player} aren't supported", f"name: {name!r}"
         )
     name = name.strip()
     if not name:

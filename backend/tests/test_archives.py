@@ -15,6 +15,7 @@ from apsui_server.testing import running_supervisor
 from fastapi.testclient import TestClient
 from game_flow import accept_yaml, generated_game
 from test_hosting import FAKE_MULTISERVER
+from worker_sim import worker_finishes
 
 from apsui.config import Settings
 from apsui.main import create_app
@@ -85,7 +86,12 @@ def test_archive_moves_the_game_out_and_opens_a_new_one(
     assert entry["slots"] == ["Knight", "Hornet"] and entry["size"] > 0
     detail = client.get(f"/api/archives/{first}").json()
     paths = {f["path"] for f in detail["files"]}
-    assert {"archive.json", "output/AP_12345.zip", "yamls/1.yaml", "yamls/2.yaml"} <= paths
+    assert {
+        "archive.json",
+        "output/AP_12345.zip",
+        "yamls/Knight.yaml",
+        "yamls/Hornet.yaml",
+    } <= paths
     assert [g["status"] for g in detail["generations"]] == ["ok"]
     assert {u["filename"] for u in detail["uploads"]} == {"knight.yaml", "hornet.yaml"}
 
@@ -135,6 +141,67 @@ def test_restore_into_an_empty_game(client: TestClient, settings: Settings) -> N
     assert [s["name"] for s in client.get("/api/slots").json()] == ["Knight"]
     # and it can be started again
     assert client.post("/api/game/start").status_code == 200
+
+
+def test_archived_yamls_are_named_by_slot_and_restore_by_upload_id(
+    client: TestClient, settings: Settings
+) -> None:
+    """#105: names mean something to someone unzipping the archive."""
+    first = accept_yaml(client, "Knight")
+    yaml = b"name: knight\ngame: APQuest\n---\nname: A/B\ngame: APQuest\n"
+    response = client.post("/api/uploads/yaml", files={"file": ("two.yaml", yaml)})
+    second = response.json()["id"]
+    docs = [
+        {"index": i, "empty": False, "name": n, "name_raw": n, "games": ["APQuest"]}
+        for i, n in enumerate(["Knight2", "A/B"])
+    ]
+    worker_finishes(client, {"validate-yaml": {"error": None, "documents": docs}})
+    game_id = game(client)["id"]
+    archive(client)
+
+    folder = settings.data_dir / "archives" / str(game_id)
+    assert sorted(p.name for p in (folder / "yamls").iterdir()) == [
+        "Knight.yaml",
+        "Knight2+A_B.yaml",
+    ]
+    meta = json.loads((folder / "archive.json").read_text())
+    assert meta["yaml_files"] == {"Knight.yaml": first, "Knight2+A_B.yaml": second}
+
+    client.post(f"/api/archives/{game_id}/restore", json={})
+    assert sorted(p.name for p in (settings.game_dir / "yamls").iterdir()) == [
+        f"{first}.yaml",
+        f"{second}.yaml",
+    ]
+    assert (settings.game_dir / "yamls" / f"{second}.yaml").read_bytes() == yaml
+
+
+def test_a_slot_name_clash_gets_a_number(client: TestClient, settings: Settings) -> None:
+    accept_yaml(client, "Knight")
+    accept_yaml(client, "Knight:")  # ':' can't be in a file name everywhere
+    accept_yaml(client, "Knight?")
+    game_id = game(client)["id"]
+    archive(client)
+    folder = settings.data_dir / "archives" / str(game_id) / "yamls"
+    assert sorted(p.name for p in folder.iterdir()) == [
+        "Knight.yaml",
+        "Knight_-2.yaml",
+        "Knight_.yaml",
+    ]
+
+
+def test_an_alpha_1_archive_still_restores(client: TestClient, settings: Settings) -> None:
+    """Alpha 1 kept <upload id>.yaml and had no yaml_files in archive.json."""
+    upload_id = accept_yaml(client, "Knight")
+    game_id = game(client)["id"]
+    archive(client)
+    folder = settings.data_dir / "archives" / str(game_id)
+    (folder / "yamls" / "Knight.yaml").rename(folder / "yamls" / f"{upload_id}.yaml")
+    meta = json.loads((folder / "archive.json").read_text())
+    del meta["yaml_files"]
+    (folder / "archive.json").write_text(json.dumps(meta))
+
+    assert client.post(f"/api/archives/{game_id}/restore", json={}).status_code == 200
+    assert (settings.game_dir / "yamls" / f"{upload_id}.yaml").is_file()
 
 
 def test_restore_returns_to_the_state_it_was_archived_from(client: TestClient) -> None:
@@ -221,10 +288,10 @@ def test_download_the_whole_archive_and_single_files(client: TestClient) -> None
     with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
         names = set(zf.namelist())
         meta = json.loads(zf.read("archive.json"))
-    assert {"archive.json", "output/AP_12345.zip", "yamls/1.yaml"} <= names
+    assert {"archive.json", "output/AP_12345.zip", "yamls/Knight.yaml"} <= names
     assert meta["slots"] == [{"name": "Knight", "games": ["APQuest"]}]
 
-    one = client.get(f"/api/archives/{first}/files/yamls/1.yaml")
+    one = client.get(f"/api/archives/{first}/files/yamls/Knight.yaml")
     assert one.status_code == 200 and b"name: Knight" in one.content
     assert one.headers["cache-control"] == "no-store"
     # Encoded, so the client doesn't resolve the dots itself and the server sees them.

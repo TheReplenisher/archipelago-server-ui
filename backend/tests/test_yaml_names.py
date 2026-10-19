@@ -42,7 +42,9 @@ def test_a_leading_document_marker() -> None:
     assert names_of(out) == ["A"]
 
 
-@pytest.mark.parametrize("bad", ["", "   ", "x" * 17, "P%number%", "Archipelago"])
+@pytest.mark.parametrize(
+    "bad", ["", "   ", "x" * 17, "P%number%", "P{player}", "Brace}", "Archipelago"]
+)
 def test_new_names_follow_the_same_rules(bad: str) -> None:
     with pytest.raises(InvalidName):
         check_new_name(bad)

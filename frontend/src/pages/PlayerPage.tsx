@@ -16,14 +16,19 @@ import {
 } from '@mantine/core'
 import { IconPlugConnectedX } from '@tabler/icons-react'
 import { useEffect, useState, type FormEvent } from 'react'
+import { MyPatches } from '../components/MyPatches'
+import { PlayerFeed } from '../components/PlayerFeed'
+import { PlayerUploads } from '../components/PlayerUploads'
 import {
   ApiError,
+  getPlayerGame,
   getSlotView,
   ITEM_PROGRESSION,
   ITEM_TRAP,
   ITEM_USEFUL,
   slotLogin,
   slotLogout,
+  type PlayerGame,
   type SlotView,
 } from '../api/client'
 
@@ -294,6 +299,7 @@ function SlotPanels({ view, onLogout }: { view: SlotView; onLogout: () => void }
       <Text size="sm" c="dimmed">
         {view.checked} of {view.locations} locations checked · {view.hint_points} hint points
       </Text>
+      <MyPatches />
       <Tabs defaultValue="received" keepMounted={false}>
         <Tabs.List>
           <Tabs.Tab value="received">Received ({view.received.length})</Tabs.Tab>
@@ -303,6 +309,7 @@ function SlotPanels({ view, onLogout }: { view: SlotView; onLogout: () => void }
           </Tabs.Tab>
           <Tabs.Tab value="unchecked">Unchecked locations ({view.unchecked.length})</Tabs.Tab>
           <Tabs.Tab value="hints">Hints ({view.hints.length})</Tabs.Tab>
+          <Tabs.Tab value="feed">Server feed</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="received" pt="sm">
           <Received view={view} />
@@ -312,6 +319,9 @@ function SlotPanels({ view, onLogout }: { view: SlotView; onLogout: () => void }
         </Tabs.Panel>
         <Tabs.Panel value="unchecked" pt="sm">
           <Unchecked view={view} />
+        </Tabs.Panel>
+        <Tabs.Panel value="feed" pt="sm">
+          <PlayerFeed />
         </Tabs.Panel>
         <Tabs.Panel value="hints" pt="sm">
           <Hints view={view} />
@@ -323,6 +333,32 @@ function SlotPanels({ view, onLogout }: { view: SlotView; onLogout: () => void }
 
 /** A player's own slot (DESIGN.md §6): log in, then follow items, locations and hints. */
 export function PlayerPage() {
+  const [game, setGame] = useState<PlayerGame | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    getPlayerGame(controller.signal)
+      .then(setGame)
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [])
+  return (
+    <Stack maw={960}>
+      <Title order={2}>Player</Title>
+      {game && <PlayerUploads game={game} />}
+      {game?.state === 'open' ? (
+        <Text size="sm" c="dimmed">
+          Once the admin starts the game, log in here with your slot name to follow your items,
+          locations and hints.
+        </Text>
+      ) : (
+        <SlotSection />
+      )}
+    </Stack>
+  )
+}
+
+/** Log in to a slot, then follow it; or hear that the server is stopped. */
+function SlotSection() {
   const [screen, setScreen] = useState<Screen>('loading')
   const [view, setView] = useState<SlotView | null>(null)
   const [loggedIn, setLoggedIn] = useState(false)
@@ -365,8 +401,7 @@ export function PlayerPage() {
   }
 
   return (
-    <Stack maw={960}>
-      <Title order={2}>Player</Title>
+    <Stack>
       {error && <Alert color="red">{error}</Alert>}
       {screen === 'loading' && <Loader size="sm" />}
       {screen === 'login' && (

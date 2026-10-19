@@ -173,7 +173,7 @@ hosting work. Each release is tested under emulated arm64 before it ships.
                         (shared with the server)
   staging/              (Beta) uploads for the next game while one is running
   archives/<id>/        archived games: their files and archive.json (#19)
-  backups/              (Alpha 2) app backups
+  backups/              app backups (#38), and .incoming/ for ones being uploaded
 ```
 
 ## 3. Game lifecycle
@@ -188,7 +188,7 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
 
 | State | Meaning |
 |---|---|
-| **Open** | Uploads accepted (admin-only in Alpha 1; players from Alpha 2) |
+| **Open** | Uploads accepted: the admin's, and players' from the Player tab unless the admin turns that off (#33) |
 | **Locked** | Uploads frozen; admin reviews before generating |
 | **Generating** | Worker runs generation. Failures go to the generation log, and the state returns to Locked |
 | **Generated** | Output exists and the server is stopped. The admin can start it, run the **test server** (Beta), or discard the output to change uploads |
@@ -235,6 +235,10 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
   `logs/`, `apworlds/` (copies of the library apworlds the game was locked to) and
   `archive.json` (slots, worlds, the generation log and the upload log), so a downloaded
   zip stands on its own. The game's database rows stay; the game folder is emptied.
+- **Archived YAMLs are named by slot (#105):** `Alice.yaml`, or `Alice+Bob.yaml` for a file
+  with several slots; characters a file name can't hold become `_`, and a clash gets `-2`,
+  `-3`. `archive.json`'s `yaml_files` maps each one to its upload ID, and restore puts them
+  back as `<upload id>.yaml`. Alpha 1 archives (`<id>.yaml`, no map) restore as they are.
 - **Only regular files are copied out of the game folder,** never through a symlink: the
   server service, which runs apworld code, can write there.
 - **Restore returns a game to the state it was archived from** (Running comes back
@@ -291,7 +295,9 @@ Steps 3–4 import world code, so they run **in the worker** (the `validate-yaml
   `verify()`. Archipelago's `roll_settings()` then runs 5 times, which also exercises
   triggers, linked options and `requires`.
 - **The name must be one fixed string,** because a slot is logged in to by name (§6).
-  Weighted names and templates (`%number%`, `%player%`) don't qualify.
+  Weighted names and templates (`%number%`, `%player%`, `{player}`, `{number}`) don't
+  qualify: AP fills them in at generation, so the slot would end up named differently from
+  the upload. Any `%`, `{` or `}` in a name is refused (#104).
 - **A slot-name problem doesn't reject the file.** Weighted, template, too long,
   missing, reserved, already taken in this game, or used twice in the file: the upload
   waits as *needs a name*, with the reason and a suggested name for each slot. The admin
@@ -410,6 +416,18 @@ Decided while building it (#22):
   upload form marks it *replaces the built-in*.
 - **`two-versions`:** one upload can't pick two apworlds for the same game.
 
+Admin override, decided while building it (#34):
+
+- **The admin changes a locked game's version** from the World versions badges on the
+  Admin tab: any approved library apworld for that game, or the official built-in world.
+  Only while uploads are Open (unlock first), so what gets generated stays settled.
+- **Every YAML using the game is checked again at once** (conne's decision,
+  2026-10-18): accepted ones and ones waiting for a name go back to the worker with the
+  new version, their slots freed meanwhile. The lock remembers which (`rechecked`) and
+  when; the Admin tab lists the ones that fail, which are the slots that have to upload
+  again. A file that was mid-check when the version changed is still checked against the
+  old one, and gets `version-locked`.
+
 ### Upload logs (admin)
 
 Every upload (YAML, apworld, and later ROM) gets a log entry containing:
@@ -434,7 +452,36 @@ Decided while building it (#23):
   the renames are listed with the reasons they were needed.
 - **Error codes link to the entry:** in the admin's upload lists, the code after a short
   error opens that upload's log. Entries are addressed as `<kind>-<id>`.
-- **"Who" is always the admin in Alpha 1;** player uploads (#30) will record the slot.
+- **"Who" is the admin, or `player` with the client address** for uploads from the
+  Player tab (#33).
+
+### Player uploads (Alpha 2, #33)
+
+Decided with conne (2026-10-18) and while building it:
+
+- **Behind an admin setting, *Anyone can upload*, on by default.** While the game is Open,
+  players upload YAMLs and apworlds on the Player tab, and they get every check the
+  admin's uploads get. Off, or once the game is locked, the Player tab doesn't offer it
+  and the API refuses (`player-uploads-off`, `uploads-closed`).
+- **Players' apworlds wait for the admin** after their automatic checks, whatever the
+  admin's own approval setting. A separate setting, *Players' apworlds*, approves them
+  automatically; picking it shows a warning that an apworld is Python code running on the
+  server. A built-in replacement always waits.
+- **Players have no account; each upload returns a receipt,** a random token their browser
+  keeps (localStorage). app.db keeps only its SHA-256. With it, and only with it, a player
+  sees that upload's status and short error (never the worker's detail), gives new slot
+  names when asked, or withdraws it while uploads are open. Receipts are sent in POST
+  bodies, so they stay out of URLs and proxy logs.
+- **The library a player can pick from** is the approved apworlds and the versions the
+  game is already locked to (`/api/player/library`); the slot names already taken are
+  shown too, since a new one has to differ.
+- **Limits per client address:** 30 YAMLs per 10 minutes, 5 apworlds per hour; and at most
+  10 players' apworlds checking or waiting for the admin at once (`too-many-waiting`).
+- **Request size is checked before the body is read** (`Content-Length`: 65 MB for an
+  apworld, 1 MB for the rest; 411 without one), since Starlette would otherwise spool a
+  whole upload to disk first and these routes are open to anyone.
+- **The admin's lists mark players' files** (`player`, with the address on hover), and the
+  upload log records who and from where.
 
 ## 5. Running the server
 
@@ -459,6 +506,10 @@ Decided while building it (#23):
 - **Start and Stop are game actions** (`POST /api/game/start`, `/stop`); Save is
   `POST /api/server/save`. If the supervisor isn't answering, nothing changes and the
   admin gets a 503.
+- **One operation at a time (#94):** the supervisor runs start, stop, save and command
+  one after another, so a second Start (a double click, two admin tabs) finds the first
+  MultiServer alive and is refused with `already-running`, rather than launching another
+  on the same port.
 
 
 ### Admin console and command assistance
@@ -527,6 +578,22 @@ Decided while building it (#23):
     Manager and Traefik do by default).
   - The page keeps the last 2000 lines, follows the newest unless the admin scrolls up,
     and reconnects after 2 seconds.
+- Decided while building the player feed (#35):
+  - **One observer connection** (`apsui.player_feed`), as the game's first slot with the
+    `Tracker` tag and the room password from the settings, collects MultiServer's
+    PrintJSON messages. It opens when a logged-in player first asks for the feed, and
+    closes after 30 minutes nobody looks, when the server stops, or for a new game.
+  - **Only what every player already sees** in their own client: item sends, `/send`
+    cheats, chat, server chat, joins and parts, goals, releases, collects, countdowns,
+    and the untyped notices MultiServer broadcasts to everyone (in AP 0.6.8 its console's
+    `/send` is one: *Cheat console: sending …*, shown as `Notice`). Hints, tutorials,
+    command results and the one untyped message AP sends a single client (a compression
+    warning) are addressed to the observer's own slot, so they are dropped: one slot's
+    hints never reach the others.
+  - **Rendered as parts** (player, item with its flags, location, text), names from the
+    data package. The last 500 entries are kept, numbered; the slot view's **Server feed**
+    tab polls for new ones every 3 seconds (`/api/slot/feed?after=`), and needs a slot
+    login like the rest of the slot view.
 
 ### Spoiler log
 
@@ -568,7 +635,8 @@ Decided while building it (#23):
   - `meta.yaml` goes with generation presets
 - Decided while building it (#25):
   - **Stored in app.db,** validated (each choice from AP's own list, numbers in range,
-    passwords a single line), with AP's defaults except `disable_item_cheat`. The upload
+    passwords a single line, and never `none`, `null`, `""` or `''`, which `/option`
+    reads as *no password*, #96), with AP's defaults except `disable_item_cheat`. The upload
     rules from §4 join them: the **slot limit** and **apworld approval**, whose install
     environment variables (`APSUI_MAX_SLOTS`, `APSUI_APWORLD_APPROVAL`) are now only the
     defaults.
@@ -587,8 +655,14 @@ Decided while building it (#23):
     which AP reads only from host.yaml, is written to the job's own user folder. The YAML
     checks use the same plando options.
   - **`auto_shutdown`:** when MultiServer stops itself after its idle time ("Shutting
-    down due to inactivity", exit 0), the server shows as *idle*, not crashed; Stop then
-    Start resumes from the save.
+    down due to inactivity", exit 0), the server shows as *idle*, not crashed. **Start**
+    then resumes it from the save without leaving Running (#97), as it does for a crashed
+    server: the web service re-writes host.yaml and the locked worlds and asks the
+    supervisor to start again.
+  - **Stored settings are checked one by one when read (#95):** a value that no longer
+    validates after an update (a dropped choice, a narrowed range, a renamed key) falls
+    back to its default, and only that one. The Settings page lists the ones that did,
+    until the admin saves.
   - **`port` is shown by the install, not set here:** under Compose the container's port
     is fixed and the published one is `APSUI_GAME_PORT` (README); LXC (#14) can revisit.
 
@@ -596,6 +670,9 @@ Decided while building it (#23):
 
 - After generation, each slot's patch or mod file (`.apz5` and similar) can be downloaded.
 - **Alpha 1:** admin only. **Alpha 2:** each player can download their own slot's files.
+- Decided while building the player side (#36): a player logged in to a slot (§6) sees
+  their own files on the slot view (`/api/slot/patches`), matched by slot name as the
+  admin's list labels them, and can download only those.
 - Decided while building it (#29): the files are read straight out of the output zip,
   one at a time or all together as a zip streamed while it is built; nothing is unpacked
   to disk. Worlds name them `AP_<seed>_P<n>_<name>.<ext>` (most) or `AP-<seed>-P<n>-<name>`
@@ -689,15 +766,46 @@ Decided while building it (#30):
 
 ## 7. Admin side
 
-- **Alpha 1: there is no admin login.** The admin tab is open to anyone who can reach
-  the UI. This is an accepted early-alpha risk; the README warns against exposing an
-  Alpha 1 install to the internet. Websites the admin visits can't use it through the
-  admin's browser (§8, requests from other websites).
-- **Alpha 2:** one default admin account. A password is set on first login and can be
-  changed later.
+- **Alpha 1 had no admin login:** the admin tab was open to anyone who could reach the UI.
+- **Alpha 2:** one default admin account, `admin`. Decided while building it (#32):
+  - **First login:** whoever opens Admin first sets the password, no setup code (conne's
+    decision, 2026-10-18). The setup screen says so, and how to take it back. Until it is
+    set, the admin pages show nothing but that screen.
+  - **Override from a shell:** `apsui-admin set-password` (`docker compose exec web …`, or
+    as root in the LXC, where a wrapper runs it as `apsui-web`) sets a new password and
+    ends every session: the way back in after a forgotten password, or from someone who
+    claimed the install first. Shell access to the host already means access to app.db.
+  - **Everything but the player pages needs it:** every API route except `/api/health`,
+    `/api/slot/*` and `/api/admin/{session,setup,login,logout}` goes through
+    `require_admin`; the server feed's WebSocket is closed with 1008 without it. Admin,
+    Settings and Health show the setup or the login until the admin is logged in, and go
+    back to the login when a request finds the session gone.
+  - **Passwords** are hashed with the standard library's scrypt (n=2^16, r=8, p=1, about
+    64 MB and 0.2 s), salted, compared in constant time; 8 to 1024 characters.
+  - **Sessions** are a random token in the `apsui_admin` cookie (`HttpOnly`,
+    `SameSite=Strict`, path `/api`, `Secure` behind HTTPS); app.db keeps only its SHA-256,
+    so a restart doesn't log the admin out. A session ends after 7 days unused or 30 days
+    in all, at logout, or when the password changes (every other session from the admin
+    pages; all of them from the shell).
+  - **Logins** are limited to 10 a minute per client address and 30 a minute in all.
+  - The health page is behind the login too, so the warning about an unset password is
+    the setup screen itself, the README and the LXC install's closing message.
 - **Beta:** the default admin can add more admins, each with a role that limits what
   they can do.
-- **Audit log (Alpha 2):** every admin action, with who did it and when.
+- **Audit log (Alpha 2):** every admin action, with who did it and when. Decided while
+  building it (#37):
+  - **Recorded by middleware** (`apsui.audit`), so no route can be missed: every request
+    that changes something and came from a logged-in admin, the admin login routes
+    (refused logins too, with no actor), opening the spoiler log, and `apsui-admin`
+    (actor `shell`). Reads aren't recorded.
+  - **Each entry:** when, who, the action (the route, with a label), the target from the
+    path (`apworld 3`), facts the route adds (file names, slot names, a console line,
+    which settings changed and from what to what), the HTTP status, and the client
+    address. **Never a password:** settings record `password: changed`, and a console
+    `/option password …` is stored as `••••`.
+  - **Kept 90 days, at most 20 000 entries**, pruned as new ones are written.
+  - **The Audit log tab** lists them newest first, 50 at a time, filtered by action,
+    refused or failed only, or text in the target and detail.
 - **Health page (Alpha 1):** whether each service is up, ports, disk use, the AP version,
   and the isolation mode.
   - Decided while building it (#31): the web service judges the worker by its heartbeat
@@ -707,7 +815,29 @@ Decided while building it (#30):
     (`APSUI_PUBLIC_WEB_PORT`, `APSUI_PUBLIC_GAME_PORT`, `APSUI_ISOLATION=compose`).
     Anything other than `compose` or `lxc` shows a reduced-isolation warning; a plain
     development run is `none`.
-- **Backup and restore (Alpha 2):** the app database, library and archives.
+- **Backup and restore (Alpha 2):** the app database, library and archives. Decided while
+  building it (#38):
+  - **A backup is one zip in `data/backups/`:** a consistent snapshot of app.db (SQLite's
+    backup API, while the app runs), the library, files waiting in `uploads/`, the current
+    game's `yamls/`, `output/` and `logs/`, and the archives unless the admin leaves them
+    out. `backup.json` lists each file's size and SHA-256 and the app, Archipelago and
+    database versions. Only regular files are copied, never through a symlink.
+  - **Made in the background,** kept until deleted, downloadable. A backup file is
+    uploaded in pieces of up to 16 MB (8 MB from the page), so a reverse proxy's body
+    limit doesn't matter, then checked before it is listed.
+  - **Restore** refuses while the server runs, a generation is under way, or the worker
+    has jobs. It makes a safety backup of the current state first (`…-before-restore`,
+    without archives), checks every file against the manifest before touching anything,
+    then copies the database into the live one in place (SQLite's backup API again),
+    migrates it, and replaces the folders. The API answers 503 `restoring` meanwhile.
+  - **What stays as it is now:** the admin's password and logins, and the audit log; a
+    restore mustn't lock the admin out or rewind the record of who did what. Players are
+    logged out of their slots.
+  - **What can't resume is settled:** checks under way are rejected as `interrupted`, a
+    generation under way failed, a Generating game is Locked and a Running one Generated.
+  - **A backup from a newer version** (a database revision this one doesn't know) is
+    refused; an older one is migrated. A backup without archives leaves the archives as
+    they are.
 
 ## 8. Networking and security
 
@@ -752,10 +882,10 @@ Rejected:
 
 - **A required custom header** (to force a CORS preflight): it adds nothing to the above
   in current browsers, doesn't help against rebinding, and breaks curl and scripts.
-- **CSRF tokens:** there are no sessions to bind them to before admin login (#32).
+- **CSRF tokens:** before admin login there were no sessions to bind them to.
 
-Admin login keeps the guard. Its cookies should be `SameSite=Strict`, and the guard still
-covers the login form and the player pages.
+Admin login (#32) keeps the guard: its cookie is `SameSite=Strict`, and the guard still
+covers the login form and the player pages. That pair stands in for CSRF tokens.
 
 ## 9. Installation targets
 

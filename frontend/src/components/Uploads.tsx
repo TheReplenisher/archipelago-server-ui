@@ -9,11 +9,14 @@ import {
   Stack,
   Table,
   Text,
+  Tooltip,
 } from '@mantine/core'
 import { IconUpload } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { ErrorCode } from './ErrorCode'
 import { FixNamesModal } from './FixNamesModal'
+import { OverrideVersionModal } from './OverrideVersionModal'
+import { UploadedBy } from './UploadedBy'
 import {
   listApworlds,
   listUploads,
@@ -51,6 +54,7 @@ export function Uploads() {
   const [library, setLibrary] = useState<Apworld[]>([])
   const [locks, setLocks] = useState<WorldLock[]>([])
   const [picked, setPicked] = useState<string[]>([])
+  const [overriding, setOverriding] = useState<WorldLock | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -72,6 +76,11 @@ export function Uploads() {
 
   // While a file is being checked, poll until the worker is done with it.
   const pending = uploads.some((u) => u.status === 'pending')
+  const usesWorld = (world: string) =>
+    uploads.filter(
+      (u) =>
+        (u.status === 'accepted' || u.status === 'needs-name') && (u.games ?? []).includes(world),
+    ).length
   useEffect(() => {
     if (!pending) return
     const timer = setInterval(() => setVersion((v) => v + 1), POLL_MS)
@@ -110,12 +119,46 @@ export function Uploads() {
               World versions:
             </Text>
             {locks.map((l) => (
-              <Badge key={l.world} variant="outline" color={l.apworld_id ? 'grape' : 'gray'}>
-                {l.label}
-              </Badge>
+              <Tooltip key={l.world} label="Change the version">
+                <Badge
+                  component="button"
+                  variant="outline"
+                  color={l.apworld_id ? 'grape' : 'gray'}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setOverriding(l)}
+                >
+                  {l.label}
+                </Badge>
+              </Tooltip>
             ))}
           </Group>
         )}
+        {locks
+          .filter((l) => l.overridden_at && (l.rechecked ?? []).length > 0)
+          .map((l) => {
+            const rechecked = l.rechecked ?? []
+            const failed = rechecked.filter((u) => u.status === 'rejected')
+            const checking = rechecked.filter((u) => u.status === 'pending').length
+            return (
+              <Alert
+                key={`override-${l.world}`}
+                color={failed.length ? 'red' : checking ? 'blue' : 'green'}
+                title={`${l.world} changed to ${l.label}`}
+              >
+                {checking > 0 && <Text size="sm">Checking {checking} again…</Text>}
+                {failed.length > 0 ? (
+                  <Text size="sm">
+                    Have to upload again:{' '}
+                    {failed
+                      .map((u) => `${u.filename}${u.error_message ? ` (${u.error_message})` : ''}`)
+                      .join('; ')}
+                  </Text>
+                ) : (
+                  checking === 0 && <Text size="sm">Every YAML still works with it.</Text>
+                )}
+              </Alert>
+            )
+          })}
         {library.length > 0 && (
           <MultiSelect
             label="Custom apworlds for this YAML"
@@ -165,7 +208,10 @@ export function Uploads() {
               <Table.Tbody>
                 {uploads.map((u) => (
                   <Table.Tr key={u.id}>
-                    <Table.Td>{u.filename}</Table.Td>
+                    <Table.Td>
+                      {u.filename}
+                      <UploadedBy by={u.uploaded_by} from={u.uploaded_from} />
+                    </Table.Td>
                     <Table.Td>
                       <Badge color={statusColor[u.status]} variant="light">
                         {statusLabel[u.status] ?? u.status}
@@ -209,6 +255,18 @@ export function Uploads() {
           </Table.ScrollContainer>
         )}
       </Stack>
+      {overriding && (
+        <OverrideVersionModal
+          lock={overriding}
+          library={library}
+          affected={usesWorld(overriding.world)}
+          onClose={() => setOverriding(null)}
+          onDone={() => {
+            setOverriding(null)
+            setVersion((v) => v + 1)
+          }}
+        />
+      )}
       {fixing && (
         <FixNamesModal
           upload={fixing}

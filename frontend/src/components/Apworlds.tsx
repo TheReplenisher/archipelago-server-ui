@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { ErrorCode } from './ErrorCode'
 import { ReviewApworldModal } from './ReviewApworldModal'
 import { listApworlds, uploadApworld, type Apworld, type ApworldStatus } from '../api/client'
+import { UploadedBy } from './UploadedBy'
 
 const statusColor: Record<ApworldStatus, string> = {
   checking: 'blue',
@@ -102,7 +103,10 @@ export function Apworlds() {
               <Table.Tbody>
                 {apworlds.map((a) => (
                   <Table.Tr key={a.id}>
-                    <Table.Td>{a.game ? a.label : a.filename}</Table.Td>
+                    <Table.Td>
+                      {a.game ? a.label : a.filename}
+                      <UploadedBy by={a.uploaded_by} from={a.uploaded_from} />
+                    </Table.Td>
                     <Table.Td>
                       <Group gap={4}>
                         <Badge color={statusColor[a.status]} variant="light">

@@ -31,6 +31,7 @@ class LogEntry(BaseModel):
     error_message: str | None
     """The short error the uploader saw."""
     uploaded_by: str
+    uploaded_from: str | None
     uploaded_at: datetime
     game_id: int | None
     """The game a YAML was uploaded to; apworlds belong to the library."""

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, WebSocket, WebSo
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from apsui import feed, hosting
+from apsui import audit, feed, hosting
 from apsui.config import Settings
 from apsui.db import get_session
 from apsui.server_control import request
@@ -68,6 +68,7 @@ async def send_command(
 ) -> ServerStatus:
     """Send one line to MultiServer's console, as typed on its own console: a /command, or
     chat as the server. The output goes to MultiServer's log (the live feed is #27)."""
+    audit.note(request, command=audit.redact_command(line.text[:1000]))
     try:
         response = await hosting.command(session, request.app.state.settings, line.text)
     except hosting.HostingError as exc:

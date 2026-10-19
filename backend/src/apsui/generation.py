@@ -88,10 +88,11 @@ def start(session: Session, jobs: JobQueue, settings: Settings) -> Generation:
             inputs=inputs,
             timeout=GENERATE_TIMEOUT,
         )
-    except Exception:
+    except Exception as exc:
         log.exception("submitting generation for game %s failed", game.id)
-        _failed(session, game, generation, "submit-failed", "Generation couldn't be started")
-        raise
+        message = "Generation couldn't be started"
+        _failed(session, game, generation, "submit-failed", message)
+        raise GenerationError("submit-failed", message, 503) from exc
     generation.job_id = job.id
     session.commit()
     return generation

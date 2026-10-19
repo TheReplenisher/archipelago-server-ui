@@ -31,6 +31,7 @@ cleanup() {
     if [ "$status" -ne 0 ]; then compose logs --no-color --tail 50 || true; fi
     compose down -v --timeout 5 >/dev/null 2>&1 || true
     [ -z "${slow:-}" ] || rm -f "$slow"
+    [ -z "${CURL_HOME:-}" ] || rm -rf "$CURL_HOME"
     exit "$status"
 }
 trap cleanup EXIT
@@ -40,6 +41,19 @@ compose up -d --wait --wait-timeout $((120 * scale))
 
 echo "--- web answers on the published port"
 curl -fsS "http://127.0.0.1:$APSUI_WEB_PORT/api/health" | grep -q '"status":"ok"'
+
+echo "--- admin login (#32): the admin API is closed until the admin logs in"
+[ "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$APSUI_WEB_PORT/api/game")" = 401 ] \
+    || { echo "the admin API answered without a login"; exit 1; }
+echo 'compose test password' | compose exec -T web apsui-admin set-password --password-stdin
+# Every curl from here on sends (and keeps) the admin's session cookie.
+CURL_HOME=$(mktemp -d)
+export CURL_HOME
+printf 'cookie = "%s/jar"\ncookie-jar = "%s/jar"\n' "$CURL_HOME" "$CURL_HOME" > "$CURL_HOME/.curlrc"
+curl -fsS -H 'Content-Type: application/json' -d '{"password":"compose test password"}' \
+    "http://127.0.0.1:$APSUI_WEB_PORT/api/admin/login" | grep -q '"logged_in":true' \
+    || { echo "admin login failed"; exit 1; }
+admin_token=$(awk '$6 == "apsui_admin" {print $7}' "$CURL_HOME/jar")
 
 echo "--- web reaches the server supervisor over the control socket"
 curl -fsS "http://127.0.0.1:$APSUI_WEB_PORT/api/server" | grep -q '"reachable":true'
@@ -162,6 +176,26 @@ echo "$slots" | grep -q '"name":"Quester"' && echo "$slots" | grep -q '"name":"A
 curl -fsS "$base/worlds" | grep -q '"world":"APQuest","label":"APQuest · custom · v9.9.0 · ' \
     || { echo "APQuest not locked to the replacement: $(curl -fsS "$base/worlds")"; exit 1; }
 echo "uploads: ok"
+
+echo "--- player upload (#33): no admin login, real AP checks it, withdrawn with its receipt"
+# curl -q: without the admin's cookie.
+player=$(curl -q -fsS -F "file=@$here/worker/tests/yaml/ok__multi.yaml" "$base/player/yaml")
+upload_id=$(echo "$player" | python3 -c 'import json,sys; print(json.load(sys.stdin)["upload"]["id"])')
+receipt=$(echo "$player" | python3 -c 'import json,sys; print(json.load(sys.stdin)["receipt"])')
+wait_checked
+curl -q -fsS -H 'Content-Type: application/json' \
+    -d "{\"receipts\":[{\"kind\":\"yaml\",\"id\":$upload_id,\"receipt\":\"$receipt\"}]}" \
+    "$base/player/receipts" | python3 -c '
+import json, sys
+[u] = json.load(sys.stdin)
+assert (u["status"], sorted(u["slots"])) == ("accepted", ["First", "Second"]), u
+assert "detail" not in u and "traceback" not in json.dumps(u), u' \
+    || { echo "player upload not accepted"; exit 1; }
+curl -fsS "$base/uploads" | grep -q '"uploaded_by":"player"' || { echo "not marked as a player upload"; exit 1; }
+curl -q -fsS -H 'Content-Type: application/json' -d "{\"receipt\":\"$receipt\"}" \
+    "$base/player/yaml/$upload_id/withdraw" | grep -q '"status":"removed"' \
+    || { echo "withdraw failed"; exit 1; }
+echo "player upload: ok"
 
 echo "--- upload log: the real rejection keeps the worker's full detail"
 bad=$(curl -fsS "$base/uploads" | python3 -c 'import json,sys; print(next(u["id"] for u in json.load(sys.stdin) if u["error_code"] == "option-invalid"))')
@@ -308,12 +342,18 @@ py server <<'PY' || { echo "the live setting never reached MultiServer"; exit 1;
 assert "Set option hint_cost to 30" in open("/data/game/logs/server.log").read()
 PY
 echo "settings: ok (host.yaml at start, /option live)"
-py web <<'PY' || { echo "server feed incomplete"; exit 1; }
-import asyncio, json
-import websockets
+py web "$admin_token" <<'PY' || { echo "server feed incomplete"; exit 1; }
+import asyncio, json, sys
+try:  # the new client (websockets 13+)
+    from websockets.asyncio.client import connect
+    headers = "additional_headers"
+except ImportError:
+    from websockets import connect
+    headers = "extra_headers"
 
 async def scrollback():
-    async with websockets.connect("ws://127.0.0.1:8000/api/server/feed") as ws:
+    url, cookie = "ws://127.0.0.1:8000/api/server/feed", {"Cookie": f"apsui_admin={sys.argv[1]}"}
+    async with connect(url, **{headers: cookie}) as ws:
         return json.loads(await ws.recv())["lines"]
 
 lines = asyncio.run(scrollback())
@@ -350,6 +390,23 @@ py server <<'PY' || { echo "the tracker never reached MultiServer"; exit 1; }
 assert "Quester (Team #1) tracking APQuest has joined" in open("/data/game/logs/server.log").read()
 PY
 echo "slot view: ok"
+echo "--- player feed (#35): one observer connection; a real /send reaches it, hints never do"
+curl -fsS -b "$jar" "$base/slot/feed" >/dev/null  # opens the observer
+curl -fsS -H 'Content-Type: application/json' -d '{"text": "/send Alice \"Confetti Cannon\""}' \
+    "$base/server/command" >/dev/null
+for _ in $(seq $((20 * scale))); do
+    curl -fsS -b "$jar" "$base/slot/feed" | grep -q 'Cheat console: sending' && break
+    sleep 1
+done
+curl -fsS -b "$jar" "$base/slot/feed" | python3 -c '
+import json, sys
+f = json.load(sys.stdin)
+# The console /send is an untyped notice to everyone in AP 0.6.8.
+cheat = [e for e in f["entries"] if "Cheat console: sending" in e["parts"][0]["text"]]
+assert cheat and cheat[-1]["type"] == "Notice", f
+assert "Confetti Cannon" in cheat[-1]["parts"][0]["text"], cheat[-1]
+assert not any(e["type"] in ("Hint", "Tutorial", "CommandResult") for e in f["entries"]), f
+print("player feed:", len(f["entries"]), "entries")' || { echo "player feed wrong"; exit 1; }
 curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
 [ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$jar" "$base/slot")" = 503 ] \
     || { echo "slot view while stopped isn't 503"; exit 1; }
@@ -387,6 +444,34 @@ curl -fsS "$base/server" | grep -q '"state":"running"' \
     || { echo "restored game not hosted: $(curl -fsS "$base/server")"; exit 1; }
 curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
 echo "archives: ok"
+
+echo "--- backup and restore (#38): a real backup on the data volume, restored in place"
+curl -fsS -H 'Content-Type: application/json' -d '{"archives": true}' "$base/backups" >/dev/null
+for _ in $(seq $((60 * scale))); do
+    curl -fsS "$base/backups" | grep -q '"making":false' && break
+    sleep 1
+done
+backup=$(curl -fsS "$base/backups" | python3 -c '
+import json, sys
+[b] = [b for b in json.load(sys.stdin)["backups"] if b["readable"]]
+assert b["archives"] and b["files"] > 5, b
+print(b["name"])') || { echo "no backup made"; exit 1; }
+curl -fsS -X POST "$base/game/discard-output" >/dev/null  # a change the restore undoes
+curl -fsS -X POST "$base/backups/$backup/restore" | grep -q "\"restored\":\"$backup\"" \
+    || { echo "restore failed"; exit 1; }
+curl -fsS "$base/game" | grep -q '"state":"generated"' \
+    || { echo "restored game wrong: $(curl -fsS "$base/game")"; exit 1; }
+curl -fsS -X POST "$base/game/start" | grep -q '"state":"running"' \
+    || { echo "the restored game won't start"; exit 1; }
+for _ in $(seq $((30 * scale))); do
+    curl -fsS "$base/server" | grep -q '"state":"running"' && break
+    sleep 1
+done
+curl -fsS "$base/server" | grep -q '"state":"running"' || { echo "restored game not hosted"; exit 1; }
+curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
+curl -fsS "$base/audit" | grep -q '"action":"restore_backup"' \
+    || { echo "restore not in the audit log"; exit 1; }
+echo "backups: ok"
 
 echo "--- health page: every service up, the published ports, compose isolation"
 curl -fsS "$base/health/details" | python3 -c '

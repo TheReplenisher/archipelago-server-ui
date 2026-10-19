@@ -87,8 +87,13 @@ class Upload(Base):
     job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"))
     """The latest check. A rename checks the file again with a new job."""
     uploaded_by: Mapped[str] = mapped_column(String(64), server_default="admin")
-    """Only the admin uploads in Alpha 1."""
+    """`admin`, or `player` from the Player tab (#33)."""
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    uploaded_from: Mapped[str | None] = mapped_column(String(64))
+    """A player's client address."""
+    receipt_hash: Mapped[str | None] = mapped_column(String(64))
+    """SHA-256 of the receipt a player got for it, which lets them see, rename or
+    withdraw it (#33)."""
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     slots: Mapped[list[Slot]] = relationship(
@@ -145,6 +150,10 @@ class Apworld(Base):
     uploaded_by: Mapped[str] = mapped_column(String(64))
     """Only the admin uploads in Alpha 1."""
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    uploaded_from: Mapped[str | None] = mapped_column(String(64))
+    """A player's client address."""
+    receipt_hash: Mapped[str | None] = mapped_column(String(64))
+    """SHA-256 of the receipt a player got for it (#33)."""
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     """When it was approved or rejected."""
@@ -166,6 +175,10 @@ class WorldLock(Base):
     upload_id: Mapped[int] = mapped_column(ForeignKey("uploads.id"))
     """The YAML that set it."""
     locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """When the admin last changed the version (#34)."""
+    rechecked: Mapped[list[int] | None] = mapped_column(JSON)
+    """The uploads that override sent back to the worker, by ID."""
 
     apworld: Mapped[Apworld | None] = relationship()
 
@@ -192,7 +205,19 @@ class Generation(Base):
     """The uploads AP's error points at: [{"upload_id", "filename", "slots"}]."""
 
 
-__all__ = ["Apworld", "Base", "Game", "Generation", "Job", "Slot", "Upload", "WorldLock"]
+__all__ = [
+    "Admin",
+    "AdminSession",
+    "Apworld",
+    "AuditEntry",
+    "Base",
+    "Game",
+    "Generation",
+    "Job",
+    "Slot",
+    "Upload",
+    "WorldLock",
+]
 
 
 class Setting(Base):
@@ -203,3 +228,48 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class Admin(Base):
+    """An admin account (DESIGN.md §7, #32). Alpha 2 has one, `admin`, whose password is
+    set by whoever opens the admin pages first, or from a shell with `apsui-admin`."""
+
+    __tablename__ = "admins"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    """scrypt, with its parameters and salt: see apsui.admin_auth."""
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    password_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AdminSession(Base):
+    """A logged-in admin browser. Only a hash of the cookie's token is stored."""
+
+    __tablename__ = "admin_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey("admins.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AuditEntry(Base):
+    """One admin action (DESIGN.md §7, #37): who, what, when, from where, and how it went."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    actor: Mapped[str | None] = mapped_column(String(64))
+    """The admin's username; `shell` for apsui-admin; None for a failed login."""
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    target: Mapped[str | None] = mapped_column(String(255))
+    """What it acted on, e.g. `apworld 3`."""
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    """Extra facts the action recorded, never a password."""
+    status: Mapped[int] = mapped_column(Integer)
+    """The HTTP status of the request; 0 for the shell."""
+    client: Mapped[str | None] = mapped_column(String(64))

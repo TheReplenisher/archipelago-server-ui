@@ -23,7 +23,14 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+)
 from sqlalchemy.orm import Session
 
 from apsui.config import Settings
@@ -33,7 +40,21 @@ log = logging.getLogger(__name__)
 
 KEY = "host"
 
-Password = Annotated[str, StringConstraints(max_length=64, pattern=r"^[^\x00-\x1f\x7f]*$")]
+NO_PASSWORD = frozenset({"none", "null", '""', "''"})
+"""Values MultiServer's /option reads as "no password", in any case (#96)."""
+
+
+def _not_a_no_password_word(value: str) -> str:
+    if value.casefold() in NO_PASSWORD:
+        raise ValueError(f"Archipelago reads {value!r} as no password; leave it empty instead")
+    return value
+
+
+Password = Annotated[
+    str,
+    StringConstraints(max_length=64, pattern=r"^[^\x00-\x1f\x7f]*$"),
+    AfterValidator(_not_a_no_password_word),
+]
 ReleaseMode = Literal["auto", "enabled", "disabled", "goal", "auto-enabled"]
 PlandoOption = Literal["bosses", "items", "texts", "connections"]
 
@@ -61,6 +82,8 @@ class HostSettings(BaseModel):
     # Uploads
     max_slots: int = Field(default=50, ge=1, le=1000)
     apworld_approval: Literal["manual", "auto"] = "manual"
+    player_uploads: bool = True
+    player_apworld_approval: Literal["manual", "auto"] = "manual"
     # Archives
     archive_limit: Literal["none", "count", "size"] = "none"
     archive_max_count: int = Field(default=20, ge=1, le=10_000)
@@ -150,6 +173,15 @@ FIELDS: list[FieldInfo] = [
               "checks needs your approval. One that replaces a built-in world always does.",
               "uploads", "choice", "upload",
               _choices(("manual", "Manual"), ("auto", "Automatic"))),
+    FieldInfo("player_uploads", "Anyone can upload", "Players upload their own YAMLs and "
+              "apworlds on the Player tab while uploads are open. Off: only you upload.",
+              "uploads", "bool", "upload"),
+    FieldInfo("player_apworld_approval", "Players' apworlds",
+              "Whether an apworld a player uploads waits for your approval after its checks. "
+              "One that replaces a built-in world always does.", "uploads", "choice", "upload",
+              _choices(("manual", "I approve each one"), ("auto", "Approve automatically")),
+              warning="An apworld is Python code that runs on this server. Approve players' "
+              "apworlds automatically only if you trust everyone who can open the Player tab."),
     FieldInfo("archive_limit", "Archive limit", "Each time a game is archived, the oldest "
               "archives are deleted until the rest fit. The newest is always kept.",
               "archives", "choice", "archive",
@@ -179,15 +211,31 @@ def defaults(settings: Settings) -> HostSettings:
 
 
 def load(session: Session, settings: Settings) -> HostSettings:
+    return load_checked(session, settings)[0]
+
+
+def load_checked(session: Session, settings: Settings) -> tuple[HostSettings, list[str]]:
+    """The stored settings, each checked on its own (#95): a value that no longer
+    validates (an update dropped a choice, narrowed a range or renamed the key) falls back
+    to its default, and only that one. Returns the keys that fell back, so the settings
+    page can say so; they stay that way until the admin saves."""
     stored = session.get(Setting, KEY)
     base = defaults(settings).model_dump()
-    if stored is None:
-        return HostSettings.model_validate(base)
-    try:
-        return HostSettings.model_validate(base | dict(stored.value))
-    except (TypeError, ValidationError) as exc:  # from an older version, say
-        log.warning("Stored settings don't fit; using the defaults: %s", str(exc)[:300])
-        return HostSettings.model_validate(base)
+    values = dict(stored.value) if stored is not None else {}
+    kept, reset = dict(base), []
+    for key, value in values.items():
+        if key not in HostSettings.model_fields:
+            reset.append(key)
+            continue
+        try:
+            HostSettings.model_validate(base | {key: value})
+        except ValidationError:
+            reset.append(key)
+            continue
+        kept[key] = value
+    if reset:
+        log.warning("Stored settings reset to their defaults: %s", ", ".join(reset))
+    return HostSettings.model_validate(kept), reset
 
 
 def save(session: Session, values: HostSettings) -> None:
@@ -250,6 +298,17 @@ def live_commands(old: HostSettings, new: HostSettings) -> dict[str, str]:
             name, text = key, str(value)
         lines[key] = f"/option {name} {shlex.quote(text)}"
     return lines
+
+
+def changes(old: HostSettings, new: HostSettings) -> dict[str, Any]:
+    """What a save changed, for the audit log: [old, new] by key, passwords only as
+    "changed"."""
+    found: dict[str, Any] = {}
+    for key in HostSettings.model_fields:
+        before, after = getattr(old, key), getattr(new, key)
+        if before != after:
+            found[key] = "changed" if key in ("password", "server_password") else [before, after]
+    return found
 
 
 def generate_params(values: HostSettings) -> dict[str, Any]:

@@ -55,6 +55,7 @@ if $uninstall; then
         rm -f "/etc/systemd/system/$unit.service"
     done
     systemctl daemon-reload
+    rm -f /usr/local/bin/apsui-admin
     rm -rf "$PREFIX" "$AP_DIR" "$AP_VENV"
     if $purge; then
         say "Deleting every game, upload, apworld, archive and setting"
@@ -232,6 +233,7 @@ say "Services"
 for unit in "${UNITS[@]}"; do
     install -m 0644 "$src/lxc/systemd/$unit.service" "/etc/systemd/system/$unit.service"
 done
+install -m 0755 "$src/lxc/bin/apsui-admin" /usr/local/bin/apsui-admin
 systemctl daemon-reload
 systemctl enable -q "${UNITS[@]}"
 systemctl restart "${UNITS[@]}"
@@ -251,5 +253,6 @@ cat <<EOF
   Players: game port $APSUI_GAME_PORT on this container's address
   Settings: $CONFIG    Logs: journalctl -u apsui-web -u apsui-worker -u apsui-server
 
-  Alpha 1 has no admin login: keep this container on your LAN or a VPN, not the internet.
+  The first person to open Admin sets its password: open it now. Forgotten it, or someone
+  beat you to it? apsui-admin set-password (as root) sets a new one.
 EOF

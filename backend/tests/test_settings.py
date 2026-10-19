@@ -18,6 +18,7 @@ from apsui.config import Settings
 from apsui.host_settings import HostSettings
 from apsui.jobs import JobQueue
 from apsui.main import create_app
+from apsui.models import Setting
 
 FAKE_MULTISERVER = """
 import sys
@@ -88,6 +89,9 @@ def test_the_defaults_and_every_field(client: TestClient, settings: Settings) ->
         {"hint_cost": 101},
         {"release_mode": "sometimes"},
         {"password": "two\nlines"},
+        {"password": "None"},  # /option would clear the password (#96)
+        {"server_password": "NULL"},
+        {"password": "''"},
         {"plando_options": ["bosses", "everything"]},
         {"unknown": 1},
     ],
@@ -195,3 +199,20 @@ def test_nothing_is_live_while_the_server_is_stopped(client: TestClient) -> None
 def test_a_password_with_a_space_is_quoted() -> None:
     old, new = HostSettings(), HostSettings(password="pw x")  # noqa: S106 - a test value
     assert host_settings.live_commands(old, new) == {"password": "/option password 'pw x'"}
+
+
+def test_a_stale_stored_value_resets_only_itself(client: TestClient) -> None:
+    """#95: after an update drops a choice or renames a key, the rest are kept."""
+    changed = values(client) | {"password": "secret", "hint_cost": 20}
+    assert client.put("/api/settings", json=changed).status_code == 200
+    with client.app.state.sessionmaker() as session:  # type: ignore[attr-defined]
+        row = session.get(Setting, host_settings.KEY)
+        row.value = row.value | {"release_mode": "gone-in-this-version", "old_key": 1}
+        session.commit()
+    body = client.get("/api/settings").json()
+    assert sorted(body["reset"]) == ["old_key", "release_mode"]
+    assert (body["values"]["password"], body["values"]["hint_cost"]) == ("secret", 20)
+    assert body["values"]["release_mode"] == "auto"
+
+    client.put("/api/settings", json=body["values"])
+    assert client.get("/api/settings").json()["reset"] == []

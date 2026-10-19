@@ -69,7 +69,8 @@ function FieldInput({ field, value, onChange }: FieldProps) {
       </Badge>
     </Group>
   )
-  const description = field.warning ? `${field.help} ${field.warning}` : field.help
+  const description =
+    field.warning && field.kind !== 'choice' ? `${field.help} ${field.warning}` : field.help
   switch (field.kind) {
     case 'bool':
       return (
@@ -94,21 +95,31 @@ function FieldInput({ field, value, onChange }: FieldProps) {
           maw={320}
         />
       )
-    case 'choice':
+    case 'choice': {
+      // A warning is about leaving the first (safe) choice: shown when another is picked.
+      const risky = field.warning !== null && value !== field.choices[0]?.value
       return (
-        <Select
-          label={label}
-          description={description}
-          data={field.choices.map((c) => ({ value: String(c.value), label: c.label }))}
-          value={String(value)}
-          onChange={(v) => {
-            const choice = field.choices.find((c) => String(c.value) === v)
-            if (choice) onChange(choice.value)
-          }}
-          allowDeselect={false}
-          maw={420}
-        />
+        <Stack gap={6}>
+          <Select
+            label={label}
+            description={description}
+            data={field.choices.map((c) => ({ value: String(c.value), label: c.label }))}
+            value={String(value)}
+            onChange={(v) => {
+              const choice = field.choices.find((c) => String(c.value) === v)
+              if (choice) onChange(choice.value)
+            }}
+            allowDeselect={false}
+            maw={420}
+          />
+          {risky && (
+            <Alert color="orange" maw={560} py={6}>
+              {field.warning}
+            </Alert>
+          )}
+        </Stack>
       )
+    }
     case 'multi':
       return (
         <Checkbox.Group
@@ -178,6 +189,7 @@ export function SettingsPage() {
       const result = await putSettings(values)
       setValues(result.values)
       setSaved(result.applied_now)
+      setPage((p) => (p ? { ...p, reset: [] } : p))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -190,6 +202,12 @@ export function SettingsPage() {
     <Stack maw={960}>
       <Title order={2}>Settings</Title>
       {!page && !error && <Loader size="sm" />}
+      {page && page.reset.length > 0 && (
+        <Alert color="orange" title="Some settings were reset after an update">
+          These stored settings no longer fit this version and are back at their defaults:{' '}
+          {page.reset.map(label).join(', ')}. Check them, then save.
+        </Alert>
+      )}
       {page &&
         groups.map((group) => {
           const fields = page.fields.filter((f) => f.group === group.key)

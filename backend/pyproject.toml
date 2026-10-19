@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 apsui-web = "apsui.__main__:main"
+apsui-admin = "apsui.admin_cli:main"
 
 [tool.uv.sources]
 apsui-server = { path = "../server", editable = true }
@@ -61,3 +62,4 @@ mypy_path = "src"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = ["real_auth: run without the automatic admin login (tests of the login itself)"]

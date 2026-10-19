@@ -144,3 +144,24 @@ def test_discarding_the_output_returns_to_locked(client: TestClient, settings: S
     response = client.post("/api/game/discard-output")
     assert (response.status_code, response.json()["state"]) == (200, "locked")
     assert not Path(settings.game_dir / "output").exists()
+
+
+def test_a_job_that_cant_be_submitted_is_a_coded_503(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accept_yaml(client, "Knight")
+    client.post("/api/game/lock")
+
+    def full(*_args: Any, **_kwargs: Any) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(client.app.state.jobs, "submit", full)  # type: ignore[attr-defined]
+    response = client.post("/api/game/generate")
+    assert response.status_code == 503
+    assert response.json()["detail"] == {
+        "code": "submit-failed",
+        "message": "Generation couldn't be started",
+    }
+    assert game(client)["state"] == "locked"
+    [entry] = client.get("/api/game/generations").json()
+    assert (entry["status"], entry["error_code"]) == ("failed", "submit-failed")

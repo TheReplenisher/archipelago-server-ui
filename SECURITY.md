@@ -16,9 +16,14 @@ multiworld means running that code. This project therefore:
   read-only filesystem and resource limits;
 - never imports apworld code in the web service, which holds the database and secrets.
 
-Alpha 1 has no admin login, so the admin tab is open to anyone who can reach the web UI.
-That includes, through the admin's own browser, any website the admin visits. The web
-service therefore refuses:
+The admin pages need the admin password (#32). Until it is set, whoever opens them first
+sets it, so set it as soon as the install is up; `apsui-admin set-password` from a shell on
+the host takes it back. The password is stored as a salted scrypt hash, sessions as a
+hash of their token, and logins are rate-limited. The login cookie is `HttpOnly` and
+`SameSite=Strict`.
+
+Any website the admin visits can also send requests through the admin's own browser. The
+web service therefore refuses:
 
 - requests that change something, and WebSocket connections, sent by pages on other
   websites (judged by `Sec-Fetch-Site`, else `Origin`);

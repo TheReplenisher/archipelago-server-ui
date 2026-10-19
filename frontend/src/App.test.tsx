@@ -68,12 +68,6 @@ describe('app shell', () => {
 })
 
 describe('admin page', () => {
-  it('warns that Alpha 1 has no admin login', () => {
-    stubHealth(okHealth)
-    renderRoute('/admin')
-    expect(screen.getByText('No admin login in Alpha 1')).toBeInTheDocument()
-  })
-
   it('shows the backend version when the API is up', async () => {
     const fetchMock = stubHealth(okHealth)
     renderRoute('/admin')
@@ -85,6 +79,107 @@ describe('admin page', () => {
     stubHealth(() => Promise.reject(new TypeError('Failed to fetch')))
     renderRoute('/admin')
     await waitFor(() => expect(screen.getByText('Unreachable')).toBeInTheDocument())
+  })
+})
+
+describe('admin login', () => {
+  /** /api/admin/* as the backend answers, starting from `password_set`. */
+  function stubAdmin(passwordSet: boolean) {
+    let session = { password_set: passwordSet, logged_in: false, username: null as string | null }
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/admin/session') return Promise.resolve(Response.json(session))
+      if (url === '/api/admin/setup' || url === '/api/admin/login') {
+        const { password } = JSON.parse(String(init?.body)) as { password: string }
+        if (url.endsWith('login') && password !== 'the password')
+          return Promise.resolve(
+            Response.json(
+              { detail: { code: 'login-refused', message: 'Wrong password' } },
+              { status: 401 },
+            ),
+          )
+        session = { password_set: true, logged_in: true, username: 'admin' }
+        return Promise.resolve(Response.json(session))
+      }
+      if (url === '/api/admin/logout') {
+        session = { ...session, logged_in: false, username: null }
+        return Promise.resolve(Response.json(session))
+      }
+      if (url === '/api/game' && !session.logged_in)
+        return Promise.resolve(
+          Response.json(
+            { detail: { code: 'admin-login-required', message: 'Log in as the admin' } },
+            { status: 401 },
+          ),
+        )
+      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
+        return Promise.resolve(Response.json([]))
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('asks whoever comes first to set the password', async () => {
+    const fetchMock = stubAdmin(false)
+    renderRoute('/admin', { realAdminSession: true })
+    expect(await screen.findByRole('heading', { name: 'Set the admin password' })).toBeVisible()
+    expect(screen.getByText('apsui-admin set-password')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/New password/), 'the password')
+    await userEvent.type(screen.getByLabelText(/Again/), 'the password')
+    await userEvent.click(screen.getByRole('button', { name: 'Set password' }))
+    expect(await screen.findByRole('heading', { name: 'Admin' })).toBeInTheDocument()
+    expect(screen.getByText('Logged in as admin')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/setup',
+      expect.objectContaining({ body: JSON.stringify({ password: 'the password' }) }),
+    )
+  })
+
+  it('logs in, shows a wrong password, and logs out', async () => {
+    stubAdmin(true)
+    renderRoute('/admin', { realAdminSession: true })
+    const field = await screen.findByLabelText(/Admin password/)
+    await userEvent.type(field, 'nope')
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
+    expect(await screen.findByText('Wrong password')).toBeInTheDocument()
+    await userEvent.clear(field)
+    await userEvent.type(field, 'the password')
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
+    expect(await screen.findByText('Logged in as admin')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
+    expect(await screen.findByRole('heading', { name: 'Admin login' })).toBeInTheDocument()
+  })
+
+  it('goes back to the login when a request finds the session gone', async () => {
+    // Logged in when the page opened; the session has since ended (expired, or the
+    // password was changed elsewhere), so the next admin request is refused.
+    let sessionChecks = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url === '/api/admin/session')
+          return Promise.resolve(
+            Response.json({
+              password_set: true,
+              logged_in: sessionChecks++ === 0,
+              username: 'admin',
+            }),
+          )
+        if (url === '/api/health') return okHealth()
+        return Promise.resolve(
+          Response.json(
+            { detail: { code: 'admin-login-required', message: 'Log in as the admin' } },
+            { status: 401 },
+          ),
+        )
+      }),
+    )
+    renderRoute('/admin', { realAdminSession: true })
+    expect(await screen.findByRole('heading', { name: 'Admin login' })).toBeInTheDocument()
+    expect(sessionChecks).toBeGreaterThan(1)
   })
 })
 
@@ -451,6 +546,79 @@ describe('custom apworlds for a YAML', () => {
   })
 })
 
+describe('changing a locked version', () => {
+  it('asks, re-checks the YAMLs, and lists the ones that fail', async () => {
+    const v2 = {
+      id: 9,
+      label: 'Sample Game · custom · v2.0.0 · def456',
+      game: 'Sample Game',
+      status: 'approved',
+      filename: 'sample_game.apworld',
+    }
+    const accepted = (id: number, filename: string, status = 'accepted') => ({
+      id,
+      kind: 'yaml',
+      filename,
+      status,
+      error_code: status === 'rejected' ? 'option-invalid' : null,
+      error_message: status === 'rejected' ? 'Invalid value' : null,
+      uploaded_at: '2026-10-19T00:00:00Z',
+      checked_at: null,
+      slots: status === 'accepted' ? ['Knight'] : [],
+      games: ['Sample Game'],
+      name_problems: [],
+    })
+    let lock: Record<string, unknown> = {
+      world: 'Sample Game',
+      label: 'Sample Game · custom · v1.0.0 · abc123',
+      apworld_id: 4,
+      upload_id: 1,
+      overridden_at: null,
+      rechecked: [],
+    }
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/worlds/Sample%20Game/override' && init?.method === 'POST') {
+        lock = {
+          ...lock,
+          label: v2.label,
+          apworld_id: 9,
+          overridden_at: '2026-10-19T00:00:00Z',
+          rechecked: [accepted(1, 'knight.yaml'), accepted(2, 'hornet.yaml', 'rejected')],
+        }
+        return Promise.resolve(Response.json(lock, { status: 202 }))
+      }
+      if (url === '/api/apworlds') return Promise.resolve(Response.json([v2]))
+      if (url === '/api/worlds') return Promise.resolve(Response.json([lock]))
+      if (url === '/api/uploads')
+        return Promise.resolve(Response.json([accepted(1, 'knight.yaml')]))
+      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
+        return Promise.resolve(Response.json([]))
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Sample Game · custom · v1.0.0 · abc123' }),
+    )
+    expect(await screen.findByText(/1 YAML uses Sample Game/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Change and re-check' })).toBeDisabled()
+    await userEvent.click(screen.getByPlaceholderText('Pick a version'))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(
+      await within(dialog).findByRole('option', { name: v2.label, hidden: true }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Change and re-check' }))
+    expect(
+      await screen.findByText('Have to upload again: hornet.yaml (Invalid value)'),
+    ).toBeInTheDocument()
+    const [, init] = fetchMock.mock.calls.find(([u]) => String(u).endsWith('/override'))!
+    expect(JSON.parse(String(init!.body))).toEqual({ apworld_id: 9 })
+  })
+})
+
 describe('upload log', () => {
   it('opens the full log entry from a short error code', async () => {
     const rejected = {
@@ -621,6 +789,36 @@ describe('server control', () => {
     expect(input).toHaveValue('/players')
     await userEvent.type(input, '{ArrowDown}')
     expect(input).toHaveValue('')
+  })
+})
+
+describe('resuming the server', () => {
+  it('offers Start while the game is Running and the server stopped itself', async () => {
+    const runningGame = { ...openGame, state: 'running', actions: ['stop'] }
+    let serverState = 'idle'
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/game/start' && init?.method === 'POST') {
+        serverState = 'starting'
+        return Promise.resolve(Response.json(runningGame))
+      }
+      if (url === '/api/game') return Promise.resolve(Response.json(runningGame))
+      if (url === '/api/server')
+        return Promise.resolve(
+          Response.json({ reachable: true, state: serverState, exit_code: 0, log_tail: [] }),
+        )
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
+        return Promise.resolve(Response.json([]))
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/admin')
+
+    expect(await screen.findByText(/Start resumes it from the save/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stop server' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Start server' }))
+    expect(await screen.findByText('Server starting')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Start server' })).not.toBeInTheDocument()
   })
 })
 
@@ -800,6 +998,7 @@ describe('settings page', () => {
         warning: 'Very large logs.',
       }),
     ],
+    reset: [],
   }
 
   it('saves the settings and says which applied at once', async () => {
@@ -837,6 +1036,19 @@ describe('settings page', () => {
       plando_options: ['bosses', 'items'],
       log_network: true,
     })
+  })
+
+  it('says which stored settings were reset after an update', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input) === '/api/settings')
+          return Promise.resolve(Response.json({ ...page, reset: ['hint_cost'] }))
+        return fallback(input)
+      }),
+    )
+    renderRoute('/settings')
+    expect(await screen.findByText(/back at their defaults: Hint cost\./)).toBeInTheDocument()
   })
 
   it('shows a validation error from the server', async () => {
@@ -974,6 +1186,118 @@ describe('health page', () => {
   })
 })
 
+describe('audit log', () => {
+  it('lists admin actions and filters them', async () => {
+    const entry = (id: number, action: string, label: string, ok = true) => ({
+      id,
+      at: '2026-10-19T00:00:00Z',
+      actor: 'admin',
+      action,
+      label,
+      target: null,
+      detail: action === 'upload_yaml' ? { filename: 'knight.yaml' } : null,
+      status: ok ? 200 : 409,
+      ok,
+      client: '192.168.1.5',
+    })
+    const all = [
+      entry(2, 'lock', 'Locked uploads', false),
+      entry(1, 'upload_yaml', 'Uploaded a YAML'),
+    ]
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/audit')) {
+        const failed = url.includes('failed=true')
+        return Promise.resolve(
+          Response.json({
+            entries: failed ? all.filter((e) => !e.ok) : all,
+            next_before: null,
+            actions: { lock: 'Locked uploads', upload_yaml: 'Uploaded a YAML' },
+          }),
+        )
+      }
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/audit')
+
+    const table = await screen.findByRole('table', { name: 'Audit log' })
+    expect(within(table).getByText('Uploaded a YAML')).toBeInTheDocument()
+    expect(within(table).getByText('filename: knight.yaml')).toBeInTheDocument()
+    expect(within(table).getByText('409')).toBeInTheDocument()
+    await userEvent.click(screen.getByLabelText('Only refused or failed'))
+    await waitFor(() =>
+      expect(within(table).queryByText('Uploaded a YAML')).not.toBeInTheDocument(),
+    )
+    expect(fetchMock).toHaveBeenCalledWith('/api/audit?failed=true', expect.anything())
+  })
+})
+
+describe('backups', () => {
+  it('makes, uploads and restores backups, asking before a restore', async () => {
+    const backup = (name: string) => ({
+      name,
+      size: 3 * 1024 * 1024,
+      created_at: '2026-10-19T00:00:00Z',
+      readable: true,
+      archives: true,
+      label: null,
+      app_version: '0.1.0a2',
+      archipelago_version: '0.6.8',
+      files: 12,
+    })
+    let backups = [backup('apsui-20261019-000000.zip')]
+    const calls: string[] = []
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url.startsWith('/api/backups')) calls.push(`${method} ${url}`)
+      if (url === '/api/backups' && method === 'GET')
+        return Promise.resolve(
+          Response.json({ backups, making: false, total_size: backups.length * 3 * 1024 ** 2 }),
+        )
+      if (url === '/api/backups' && method === 'POST') {
+        backups = [backup('apsui-20261019-010000.zip'), ...backups]
+        return Promise.resolve(Response.json({ ok: true }, { status: 202 }))
+      }
+      if (url === '/api/backups/incoming')
+        return Promise.resolve(Response.json({ id: 'a'.repeat(24) }, { status: 201 }))
+      if (url.startsWith('/api/backups/incoming/') && method === 'PUT')
+        return Promise.resolve(Response.json({ size: 4 }))
+      if (url.endsWith('/finish')) {
+        backups = [...backups, backup('mine.zip')]
+        return Promise.resolve(Response.json(backup('mine.zip')))
+      }
+      if (url.endsWith('/restore'))
+        return Promise.resolve(
+          Response.json({ restored: 'mine.zip', created_at: '', archives: true }),
+        )
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/backups')
+
+    const table = await screen.findByRole('table', { name: 'Backups' })
+    expect(within(table).getByText('apsui-20261019-000000.zip')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Make a backup' }))
+    expect(await within(table).findByText('apsui-20261019-010000.zip')).toBeInTheDocument()
+
+    const input = document.querySelector('input[type=file][accept*=".zip"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['data'], 'mine.zip', { type: 'application/zip' }))
+    expect(await screen.findByText('Uploaded mine.zip. Restore it from the list.')).toBeVisible()
+    expect(calls).toContain(`PUT /api/backups/incoming/${'a'.repeat(24)}?offset=0`)
+
+    const row = within(table).getByText('mine.zip').closest('tr') as HTMLElement
+    await userEvent.click(within(row).getByRole('button', { name: 'Restore' }))
+    expect(await screen.findByText(/A backup of the current state is made first/)).toBeVisible()
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Restore' }),
+    )
+    expect(await screen.findByText('Restored mine.zip.')).toBeInTheDocument()
+    expect(calls).toContain('POST /api/backups/mine.zip/restore')
+  })
+})
+
 describe('archives', () => {
   const generatedGame = { ...openGame, id: 3, state: 'generated', actions: ['start'] }
   const archived = {
@@ -1057,6 +1381,63 @@ describe('archives', () => {
   })
 })
 
+describe('player uploads', () => {
+  const openForPlayers = {
+    state: 'open',
+    uploads_open: true,
+    player_uploads: true,
+    apworld_approval: 'manual',
+    max_slots: 50,
+    slots_used: 1,
+    taken_names: ['Hornet'],
+  }
+
+  it('uploads a YAML, keeps the receipt, and shows the result', async () => {
+    let status = 'pending'
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/player/game') return Promise.resolve(Response.json(openForPlayers))
+      if (url === '/api/player/library')
+        return Promise.resolve(Response.json({ apworlds: [], locked: [] }))
+      const upload = () => ({
+        kind: 'yaml',
+        id: 7,
+        filename: 'knight.yaml',
+        status,
+        error_code: null,
+        error_message: null,
+        slots: status === 'accepted' ? ['Knight'] : [],
+        name_problems: [],
+        current_game: true,
+        uploaded_at: '2026-10-19T00:00:00Z',
+      })
+      if (url === '/api/player/yaml')
+        return Promise.resolve(Response.json({ receipt: 'secret-receipt', upload: upload() }))
+      if (url === '/api/player/receipts') {
+        const found = [upload()]
+        status = 'accepted'
+        return Promise.resolve(Response.json(found))
+      }
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/player')
+
+    expect(await screen.findByText(/1 of 50 slots are taken/)).toBeInTheDocument()
+    expect(screen.getByText('Taken slot names: Hornet')).toBeInTheDocument()
+    const input = document.querySelector('input[type=file][accept*=".yaml"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['name: Knight'], 'knight.yaml'))
+    expect(await screen.findByText('Slots: Knight', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('apsui.receipts') ?? '[]')).toEqual([
+      { kind: 'yaml', id: 7, receipt: 'secret-receipt' },
+    ])
+    const receiptsCall = fetchMock.mock.calls.find(([url]) => url === '/api/player/receipts')
+    expect(JSON.parse(String(receiptsCall?.[1]?.body))).toEqual({
+      receipts: [{ kind: 'yaml', id: 7, receipt: 'secret-receipt' }],
+    })
+  })
+})
+
 describe('player page', () => {
   const view = {
     slot: { name: 'Knight', game: 'APQuest', team: 0, slot: 1 },
@@ -1100,6 +1481,30 @@ describe('player page', () => {
         return Promise.resolve(
           loggedIn ? Response.json(view) : Response.json(notLoggedIn, { status: 401 }),
         )
+      if (url === '/api/slot/patches')
+        return Promise.resolve(
+          Response.json([{ file: 'AP_1_P1_Knight.apz5', player: 1, slot: 'Knight', size: 2048 }]),
+        )
+      if (url.startsWith('/api/slot/feed'))
+        return Promise.resolve(
+          Response.json({
+            entries: [
+              {
+                id: 1,
+                at: 1760000000,
+                type: 'ItemSend',
+                parts: [
+                  { kind: 'player', text: 'Hornet' },
+                  { kind: 'text', text: ' sent ' },
+                  { kind: 'item', text: 'Hookshot', flags: 1 },
+                  { kind: 'text', text: ' to ' },
+                  { kind: 'player', text: 'Knight' },
+                ],
+              },
+            ],
+            last: 1,
+          }),
+        )
       return okHealth()
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -1120,6 +1525,16 @@ describe('player page', () => {
     expect(await screen.findByText(/Shown once you reach your goal/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('tab', { name: /Hints/ }))
     expect(await screen.findByText('priority')).toBeInTheDocument()
+    // Their own patch file (#36), and what everyone sees (#35).
+    expect(screen.getByRole('link', { name: 'AP_1_P1_Knight.apz5' })).toHaveAttribute(
+      'href',
+      '/api/slot/patches/AP_1_P1_Knight.apz5',
+    )
+    await userEvent.click(screen.getByRole('tab', { name: 'Server feed' }))
+    expect(await screen.findByText('Hookshot')).toBeInTheDocument()
+    expect(screen.getByLabelText('Feed entries')).toHaveTextContent(
+      'Hornet sent Hookshot to Knight',
+    )
   })
 
   it('tells the player to contact the admin while the server is stopped', async () => {

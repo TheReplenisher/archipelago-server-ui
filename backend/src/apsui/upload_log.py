@@ -5,11 +5,14 @@ the upload and its job already recorded; uploaders only ever see the short error
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from apsui.models import Apworld, Job, Upload
+from apsui.uploads import YamlCheck
 
 OK, FAILED, WARNING, WAITING = "ok", "failed", "warning", "waiting"
 
@@ -31,6 +34,7 @@ def entry(item: Upload | Apworld) -> dict[str, Any]:
         "error_code": item.error_code,
         "error_message": item.error_message,
         "uploaded_by": item.uploaded_by,
+        "uploaded_from": item.uploaded_from,
         "uploaded_at": item.uploaded_at,
         "game_id": item.game_id if isinstance(item, Upload) else None,
     }
@@ -76,28 +80,28 @@ def yaml_checks(upload: Upload, job: Job | None) -> list[dict[str, Any]]:
     failed = _job_check("Worker check", job)
     if failed is not None:
         return [*checks, failed]
-    output = (job.result or {}).get("output") or {} if job else {}
-    error = output.get("error")
-    if error:
-        return [*checks, check("Parse", FAILED, error.get("message", ""), error.get("detail"))]
-    checks.append(check("Parse", OK, f"{len(output.get('documents', []))} documents"))
-    for doc in output.get("documents", []):
-        if doc.get("empty"):
+    raw = (job.result or {}).get("output") if job else None
+    try:
+        output = YamlCheck.model_validate(raw)
+    except ValidationError:  # the worker's output is untrusted (uploads.py rejects it)
+        shown = json.dumps(raw, indent=2, default=str)[:20_000]
+        return [*checks, check("Worker result", FAILED, "The worker's result is malformed", shown)]
+    if output.error:
+        return [*checks, check("Parse", FAILED, output.error.message, output.error.detail)]
+    checks.append(check("Parse", OK, f"{len(output.documents)} documents"))
+    for doc in output.documents:
+        if doc.empty:
             continue
-        label = f"Document {doc['index'] + 1}"
-        if doc.get("name"):
-            label += f" ({doc['name']})"
-        games = ", ".join(doc.get("games", []))
-        doc_error, name_error = doc.get("error"), doc.get("name_error")
-        if doc_error:
-            checks.append(
-                check(label, FAILED, doc_error.get("message", ""), doc_error.get("detail"))
-            )
-        elif name_error:
-            checks.append(check(label, WARNING, name_error.get("message", "")))
+        label = f"Document {doc.index + 1}"
+        if doc.name:
+            label += f" ({doc.name})"
+        if doc.error:
+            checks.append(check(label, FAILED, doc.error.message, doc.error.detail))
+        elif doc.name_error:
+            checks.append(check(label, WARNING, doc.name_error.message))
         else:
-            checks.append(check(label, OK, games))
-        for warning in doc.get("warnings", []):
+            checks.append(check(label, OK, ", ".join(doc.games)))
+        for warning in doc.warnings:
             checks.append(check(label, WARNING, warning))
     for problem in upload.name_problems or []:
         renamed = problem.get("new_name")

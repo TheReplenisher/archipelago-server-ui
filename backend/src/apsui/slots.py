@@ -36,6 +36,7 @@ from apsui.config import Settings
 from apsui.generation import output_dir
 from apsui.lifecycle import GameState, current_game
 from apsui.models import Generation
+from apsui.player_feed import Feed
 from apsui.server_control import request
 
 log = logging.getLogger(__name__)
@@ -43,6 +44,8 @@ log = logging.getLogger(__name__)
 COOKIE = "apsui_slot"
 SESSION_IDLE = 12 * 3600.0
 TRACKER_IDLE = 600.0
+OBSERVER_IDLE = 1800.0
+"""The player feed's connection closes after this long without a player looking."""
 LOGIN_ATTEMPTS = 10
 """Logins per client address per minute; each one is a connection to MultiServer."""
 MAX_NAME = 16
@@ -79,6 +82,10 @@ class SlotViews:
         self.last_used: dict[str, float] = {}
         self.attempts: dict[str, collections.deque[float]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        self.feed = Feed()
+        self.observer: Tracker | None = None
+        self.observer_used = 0.0
+        self._observer_lock = asyncio.Lock()
 
     async def login(self, db: Session, name: str, password: str, client: str) -> str:
         """Check the slot name and password against the running server; returns a
@@ -122,10 +129,71 @@ class SlotViews:
         pool = slot_items.load(output_dir(self.settings), tracker.slot)
         return snapshot(tracker, pool, values.remaining_mode)
 
+    async def slot_name(self, db: Session, token: str | None) -> str:
+        """The slot this session is logged in to, while its game is the one running."""
+        session = self._session(token)
+        if session.seed != await self._running_seed(db):
+            self.logout(token)
+            raise SlotError("game-changed", "A new game has started: log in again", 401)
+        return session.name
+
+    async def feed_after(self, db: Session, token: str | None, last: int) -> dict[str, Any]:
+        """The player feed's entries after `last` (#35), for a logged-in player. Opens
+        the observer connection if it isn't open."""
+        await self.slot_name(db, token)
+        seed = await self._running_seed(db)
+        async with self._observer_lock:
+            if self.feed.seed != seed:
+                await self._close_observer()
+                self.feed.reset(seed)
+            if self.observer is None or not self.observer.open:
+                await self._open_observer(db)
+        self.observer_used = time.monotonic()
+        entries = self.feed.after(last)
+        return {"entries": entries, "last": entries[-1]["id"] if entries else last}
+
+    async def _open_observer(self, db: Session) -> None:
+        """Connect as the game's first slot, with the room password from the settings."""
+        game = current_game(db)
+        generation = db.scalars(
+            select(Generation)
+            .where(Generation.game_id == game.id, Generation.status == "ok")
+            .order_by(Generation.id.desc())
+        ).first()
+        players = generation.players if generation else None
+        if not players:
+            raise SlotError("feed-unavailable", "The feed isn't available", 503)
+        password = host_settings.load(db, self.settings).password
+        observer = Tracker(
+            self.settings.relay_socket,
+            players[0],
+            password,
+            self.settings.archipelago_version,
+            on_print=self.feed.add,
+        )
+        try:
+            await observer.start()
+        except (Refused, Unavailable) as exc:
+            log.warning("The player feed can't connect: %s", exc)
+            raise SlotError("feed-unavailable", "The feed isn't available right now", 503) from exc
+        self.observer = observer
+
+    async def _close_observer(self) -> None:
+        if self.observer is not None:
+            await self.observer.close()
+            self.observer = None
+
+    async def reset(self) -> None:
+        """Forget every session and connection: the data under them was replaced (#38)."""
+        await self.close()
+        self.sessions.clear()
+        self.feed = Feed()
+
     async def close(self) -> None:
         for tracker in list(self.trackers.values()):
             await tracker.close()
         self.trackers.clear()
+        await self._close_observer()
 
     async def _connect(self, name: str, password: str) -> Tracker:
         tracker = Tracker(
@@ -181,6 +249,8 @@ class SlotViews:
             if now - self.last_used.get(name, 0) > TRACKER_IDLE:
                 await tracker.close()
                 del self.trackers[name]
+        if self.observer is not None and now - self.observer_used > OBSERVER_IDLE:
+            await self._close_observer()
 
     def _limit(self, client: str) -> None:
         now = time.monotonic()

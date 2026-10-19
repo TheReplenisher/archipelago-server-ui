@@ -24,7 +24,11 @@ for _ in $(seq $((30 * scale))); do
 done
 curl -fsS "http://127.0.0.1:$port/api/health" | grep -q '"status":"ok"'
 curl -fsS "http://127.0.0.1:$port/admin" | grep -q '<div id="root">'
-curl -fsS "http://127.0.0.1:$port/api/console/commands" | python3 -c '
+jar=$(mktemp)
+trap 'cleanup; rm -f "$jar"' EXIT
+curl -fsS -c "$jar" -H 'Content-Type: application/json' -d '{"password":"smoke test password"}' \
+    "http://127.0.0.1:$port/api/admin/setup" | grep -q '"logged_in":true'
+curl -fsS -b "$jar" "http://127.0.0.1:$port/api/console/commands" | python3 -c '
 import json, sys
 commands = {c["name"]: c for c in json.load(sys.stdin)}
 assert [a["kind"] for a in commands["send"]["args"]] == ["player", "item"], commands.get("send")
