@@ -108,7 +108,9 @@ Recorded so they aren't lost, not committed to a release.
   never served back to users.
 - **Generation presets:** saved sets of generation options, for example race mode or
   plando.
-- **Several games running at the same time** (concurrent rooms).
+- **Several games running at the same time (#53).** Concurrent rooms, each with its own
+  lifecycle, settings and game port; players pick the room. Lifts "one live multiworld
+  per install".
 - **AP version chosen by the admin.** *Unconfirmed:* only if it proves practical.
 
 ### Deployment
