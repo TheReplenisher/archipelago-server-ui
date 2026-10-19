@@ -17,6 +17,7 @@ import contextlib
 import json
 import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -89,8 +90,17 @@ class Tracker:
     """One slot's live view. start() connects and waits for MultiServer's answer; the
     connection then stays open, updating the state, until close() or MultiServer goes."""
 
-    def __init__(self, relay: Path, name: str, password: str, ap_version: str) -> None:
+    def __init__(
+        self,
+        relay: Path,
+        name: str,
+        password: str,
+        ap_version: str,
+        on_print: Callable[[Tracker, dict[str, Any]], None] | None = None,
+    ) -> None:
         self.relay, self.name, self.password = relay, name, password
+        self.on_print = on_print
+        """Called with each PrintJSON message (the player feed's observer, #35)."""
         self.ap_version = ap_version
         self.team = self.slot = 0
         self.players: dict[int, str] = {}
@@ -261,6 +271,8 @@ class Tracker:
                     self._stored(key, value)
         elif command == "SetReply":
             self._stored(message.get("key"), message.get("value"))
+        elif command == "PrintJSON" and self.on_print is not None:
+            self.on_print(self, message)
 
     def _stored(self, key: object, value: object) -> None:
         if key == self.hints_key and isinstance(value, list):

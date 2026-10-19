@@ -1343,6 +1343,30 @@ describe('player page', () => {
         return Promise.resolve(
           loggedIn ? Response.json(view) : Response.json(notLoggedIn, { status: 401 }),
         )
+      if (url === '/api/slot/patches')
+        return Promise.resolve(
+          Response.json([{ file: 'AP_1_P1_Knight.apz5', player: 1, slot: 'Knight', size: 2048 }]),
+        )
+      if (url.startsWith('/api/slot/feed'))
+        return Promise.resolve(
+          Response.json({
+            entries: [
+              {
+                id: 1,
+                at: 1760000000,
+                type: 'ItemSend',
+                parts: [
+                  { kind: 'player', text: 'Hornet' },
+                  { kind: 'text', text: ' sent ' },
+                  { kind: 'item', text: 'Hookshot', flags: 1 },
+                  { kind: 'text', text: ' to ' },
+                  { kind: 'player', text: 'Knight' },
+                ],
+              },
+            ],
+            last: 1,
+          }),
+        )
       return okHealth()
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -1363,6 +1387,16 @@ describe('player page', () => {
     expect(await screen.findByText(/Shown once you reach your goal/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('tab', { name: /Hints/ }))
     expect(await screen.findByText('priority')).toBeInTheDocument()
+    // Their own patch file (#36), and what everyone sees (#35).
+    expect(screen.getByRole('link', { name: 'AP_1_P1_Knight.apz5' })).toHaveAttribute(
+      'href',
+      '/api/slot/patches/AP_1_P1_Knight.apz5',
+    )
+    await userEvent.click(screen.getByRole('tab', { name: 'Server feed' }))
+    expect(await screen.findByText('Hookshot')).toBeInTheDocument()
+    expect(screen.getByLabelText('Feed entries')).toHaveTextContent(
+      'Hornet sent Hookshot to Knight',
+    )
   })
 
   it('tells the player to contact the admin while the server is stopped', async () => {

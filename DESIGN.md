@@ -639,6 +639,9 @@ Decided with conne (2026-10-18) and while building it:
 
 - After generation, each slot's patch or mod file (`.apz5` and similar) can be downloaded.
 - **Alpha 1:** admin only. **Alpha 2:** each player can download their own slot's files.
+- Decided while building the player side (#36): a player logged in to a slot (§6) sees
+  their own files on the slot view (`/api/slot/patches`), matched by slot name as the
+  admin's list labels them, and can download only those.
 - Decided while building it (#29): the files are read straight out of the output zip,
   one at a time or all together as a zip streamed while it is built; nothing is unpacked
   to disk. Worlds name them `AP_<seed>_P<n>_<name>.<ext>` (most) or `AP-<seed>-P<n>-<name>`

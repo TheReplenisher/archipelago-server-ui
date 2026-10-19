@@ -5,9 +5,11 @@ docker/compose-test.sh."""
 
 import asyncio
 import contextlib
+import io
 import json
 import threading
 import time
+import zipfile
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -101,6 +103,22 @@ class FakeAP:
             }  # fmt: skip
             keys = {"_read_hints_0_1": [hint], "_read_client_status_0_1": self.client_status}
             await ws.send(json.dumps([{"cmd": "Retrieved", "keys": keys}]))
+            # What MultiServer tells this client: one item send for everyone, a hint and
+            # a tutorial for this slot only.
+            send = {
+                "cmd": "PrintJSON", "type": "ItemSend", "receiving": 1,
+                "item": {"item": 100, "location": 20, "player": 2, "flags": 1},
+                "data": [
+                    {"type": "player_id", "text": "2"}, {"text": " sent "},
+                    {"type": "item_id", "text": "100", "player": 1, "flags": 1},
+                    {"text": " to "}, {"type": "player_id", "text": "1"},
+                    {"text": " ("}, {"type": "location_id", "text": "20", "player": 2},
+                    {"text": ")"},
+                ],
+            }  # fmt: skip
+            hint = {"cmd": "PrintJSON", "type": "Hint", "data": [{"text": "[Hint]: secret"}]}
+            tutorial = {"cmd": "PrintJSON", "type": "Tutorial", "data": [{"text": "!help"}]}
+            await ws.send(json.dumps([send, hint, tutorial]))
 
 
 @contextlib.contextmanager
@@ -150,14 +168,18 @@ def client(settings: Settings, tmp_path: Path, ap: FakeAP) -> Iterator[TestClien
         c.post("/api/game/stop")
 
 
-def host(client: TestClient, slot_items: dict[str, Any] | None = SLOT_ITEMS) -> None:
+def host(
+    client: TestClient,
+    slot_items: dict[str, Any] | None = SLOT_ITEMS,
+    output: bytes | None = None,
+) -> None:
     """Generate a game for Knight and Hornet and start it."""
     accept_yaml(client, "Knight")
     accept_yaml(client, "Hornet")
     client.post("/api/game/lock")
     client.post("/api/game/generate")
     extra = {"slot_items.json": json.dumps(slot_items).encode()} if slot_items else None
-    finish_with_zip(client, ["Knight", "Hornet"], extra=extra)
+    finish_with_zip(client, ["Knight", "Hornet"], data=output, extra=extra)
     assert client.post("/api/game/start").status_code == 200
     for _ in range(250):
         if client.get("/api/server").json()["state"] == "running":
@@ -268,3 +290,50 @@ def test_logins_are_rate_limited(client: TestClient) -> None:
     host(client)
     codes = [login(client, "Knight", "wrong").status_code for _ in range(11)]
     assert codes == [401] * 10 + [429]
+
+
+def test_a_player_downloads_only_their_own_patch(client: TestClient) -> None:
+    """#36: from the slot view, while logged in to that slot."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr(zipfile.ZipInfo("AP_12345.archipelago", (2026, 1, 1, 0, 0, 0)), b"multidata")
+        zf.writestr("AP_12345_P1_Knight.apz5", b"knight patch")
+        zf.writestr("AP_12345_P2_Hornet.aplttp", b"hornet patch")
+    host(client, output=buffer.getvalue())
+    assert client.get("/api/slot/patches").status_code == 401
+    login(client)
+    [patch] = client.get("/api/slot/patches").json()
+    assert (patch["file"], patch["slot"]) == ("AP_12345_P1_Knight.apz5", "Knight")
+    response = client.get("/api/slot/patches/AP_12345_P1_Knight.apz5")
+    assert (response.status_code, response.content) == (200, b"knight patch")
+    other = client.get("/api/slot/patches/AP_12345_P2_Hornet.aplttp")
+    assert (other.status_code, other.json()["detail"]["code"]) == (404, "not-found")
+
+
+def test_the_player_feed_shows_what_everyone_sees_and_no_hints(client: TestClient) -> None:
+    """#35: from one observer connection, never the admin's feed."""
+    host(client)
+    values = client.get("/api/settings").json()["values"]
+    client.put("/api/settings", json=values | {"password": PASSWORD})
+    assert client.get("/api/slot/feed").status_code == 401
+    login(client, "Hornet")
+    body: dict[str, Any] = {"entries": []}
+    for _ in range(100):
+        body = client.get("/api/slot/feed").json()
+        if body["entries"]:
+            break
+        time.sleep(0.02)
+    [entry] = body["entries"]
+    assert entry["type"] == "ItemSend"
+    assert [(p["kind"], p["text"]) for p in entry["parts"]] == [
+        ("player", "Hornet"),
+        ("text", " sent "),
+        ("item", "Sword"),
+        ("text", " to "),
+        ("player", "Knight"),
+        ("text", " ("),
+        ("location", "Cave"),
+        ("text", ")"),
+    ]
+    assert entry["parts"][2]["flags"] == 1
+    assert client.get("/api/slot/feed", params={"after": body["last"]}).json()["entries"] == []

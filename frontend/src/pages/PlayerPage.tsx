@@ -16,6 +16,8 @@ import {
 } from '@mantine/core'
 import { IconPlugConnectedX } from '@tabler/icons-react'
 import { useEffect, useState, type FormEvent } from 'react'
+import { MyPatches } from '../components/MyPatches'
+import { PlayerFeed } from '../components/PlayerFeed'
 import { PlayerUploads } from '../components/PlayerUploads'
 import {
   ApiError,
@@ -297,6 +299,7 @@ function SlotPanels({ view, onLogout }: { view: SlotView; onLogout: () => void }
       <Text size="sm" c="dimmed">
         {view.checked} of {view.locations} locations checked · {view.hint_points} hint points
       </Text>
+      <MyPatches />
       <Tabs defaultValue="received" keepMounted={false}>
         <Tabs.List>
           <Tabs.Tab value="received">Received ({view.received.length})</Tabs.Tab>
@@ -306,6 +309,7 @@ function SlotPanels({ view, onLogout }: { view: SlotView; onLogout: () => void }
           </Tabs.Tab>
           <Tabs.Tab value="unchecked">Unchecked locations ({view.unchecked.length})</Tabs.Tab>
           <Tabs.Tab value="hints">Hints ({view.hints.length})</Tabs.Tab>
+          <Tabs.Tab value="feed">Server feed</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="received" pt="sm">
           <Received view={view} />
@@ -315,6 +319,9 @@ function SlotPanels({ view, onLogout }: { view: SlotView; onLogout: () => void }
         </Tabs.Panel>
         <Tabs.Panel value="unchecked" pt="sm">
           <Unchecked view={view} />
+        </Tabs.Panel>
+        <Tabs.Panel value="feed" pt="sm">
+          <PlayerFeed />
         </Tabs.Panel>
         <Tabs.Panel value="hints" pt="sm">
           <Hints view={view} />

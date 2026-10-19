@@ -644,3 +644,30 @@ export const playerRename = (receipt: Receipt, names: { document: number; name: 
 
 export const playerWithdraw = (receipt: Receipt) =>
   postJsonBody<PlayerUpload>(`/player/yaml/${receipt.id}/withdraw`, { receipt: receipt.receipt })
+
+// ---- Player side: own patch files (#36) and the player feed (#35)
+
+export const listMyPatches = (signal?: AbortSignal) =>
+  getJson<PatchFile[]>('/slot/patches', { signal })
+
+export const myPatchUrl = (file: string) => `/api/slot/patches/${encodeURIComponent(file)}`
+
+export interface FeedPart {
+  /** text, player, item, location or entrance. */
+  kind: string
+  text: string
+  /** Items: AP's flags (progression, useful, trap). */
+  flags?: number
+}
+
+export interface FeedEntry {
+  id: number
+  /** Unix seconds. */
+  at: number
+  /** ItemSend, ItemCheat, Chat, ServerChat, Join, Part, Goal, Release, Collect, Countdown. */
+  type: string
+  parts: FeedPart[]
+}
+
+export const getPlayerFeed = (after: number, signal?: AbortSignal) =>
+  getJson<{ entries: FeedEntry[]; last: number }>(`/slot/feed?after=${after}`, { signal })
