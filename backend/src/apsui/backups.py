@@ -344,8 +344,8 @@ def restore(engine: Engine, settings: Settings, name: str) -> dict[str, Any]:
         _swap(staging / "uploads", settings.uploads_dir)
         if manifest.get("archives"):
             _swap(staging / "archives", archives_dir(settings))
-        for part in GAME_PARTS:
-            _swap(staging / "game" / part, settings.game_dir / part)
+        for part in GAME_PARTS:  # copied, so they take the game folder's group (LXC)
+            _swap(staging / "game" / part, settings.game_dir / part, copy=True)
         with Session(engine) as session:
             settle(session)
     finally:
@@ -408,9 +408,11 @@ def _restore_db(engine: Engine, staged: Path) -> None:
     engine.dispose()
 
 
-def _swap(new: Path, live: Path) -> None:
+def _swap(new: Path, live: Path, copy: bool = False) -> None:
     """Replace a folder's contents with the backup's (empty if the backup has none). The
-    folder itself stays: under Compose the game folder is a mount point."""
+    folder itself stays: under Compose the game folder is a mount point. With `copy`, the
+    files are written anew rather than moved: in the LXC the game folder is shared with
+    the server's user through its setgid group, which a rename wouldn't give them."""
     live.mkdir(parents=True, exist_ok=True)
     for entry in os.scandir(live):
         path = Path(entry.path)
@@ -418,9 +420,15 @@ def _swap(new: Path, live: Path) -> None:
             shutil.rmtree(path)
         else:
             path.unlink()
-    if new.is_dir():
-        for entry in os.scandir(new):
+    if not new.is_dir():
+        return
+    for entry in os.scandir(new):
+        if not copy:
             shutil.move(entry.path, live / entry.name)
+        elif entry.is_dir(follow_symlinks=False):
+            shutil.copytree(entry.path, live / entry.name, copy_function=shutil.copyfile)
+        else:
+            shutil.copyfile(entry.path, live / entry.name)
 
 
 def settle(session: Session) -> None:
