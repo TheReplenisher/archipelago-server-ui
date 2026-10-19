@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from apsui import archives
+from apsui import archives, audit
 from apsui.api.game import GameOut, GenerationOut, SessionDep, game_out
 from apsui.host_settings import load as load_settings
 from apsui.lifecycle import GameState
@@ -159,6 +159,7 @@ async def restore_archive(
     game_id: int, body: RestoreIn, request: Request, session: SessionDep
 ) -> GameOut:
     """Make the archived game current again, in the state it was archived from."""
+    audit.note(request, current_game=body.current)
     try:
         game = await archives.restore(session, request.app.state.settings, game_id, body.current)
     except archives.ArchiveError as exc:

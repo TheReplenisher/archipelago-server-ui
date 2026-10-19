@@ -4,6 +4,7 @@ from apsui.api import (
     admin,
     apworlds,
     archives,
+    audit_log,
     console,
     game,
     health,
@@ -31,3 +32,4 @@ router.include_router(uploads.router, dependencies=admin_only)
 router.include_router(apworlds.router, dependencies=admin_only)
 router.include_router(logs.router, dependencies=admin_only)
 router.include_router(settings.router, dependencies=admin_only)
+router.include_router(audit_log.router, dependencies=admin_only)

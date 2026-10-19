@@ -16,7 +16,7 @@ import sys
 
 from sqlalchemy import func, select
 
-from apsui import admin_auth, migrate
+from apsui import admin_auth, audit, migrate
 from apsui.config import get_settings
 from apsui.db import make_engine, make_sessionmaker
 from apsui.models import AdminSession
@@ -56,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
         except admin_auth.AuthError as exc:
             print(exc.message, file=sys.stderr)
             return 1
+        audit.record(session, actor="shell", action="set_password_shell", status=0)
     print("The admin password is set. Every admin session was logged out.")
     return 0
 

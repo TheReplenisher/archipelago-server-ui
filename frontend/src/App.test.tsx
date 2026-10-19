@@ -1113,6 +1113,53 @@ describe('health page', () => {
   })
 })
 
+describe('audit log', () => {
+  it('lists admin actions and filters them', async () => {
+    const entry = (id: number, action: string, label: string, ok = true) => ({
+      id,
+      at: '2026-10-19T00:00:00Z',
+      actor: 'admin',
+      action,
+      label,
+      target: null,
+      detail: action === 'upload_yaml' ? { filename: 'knight.yaml' } : null,
+      status: ok ? 200 : 409,
+      ok,
+      client: '192.168.1.5',
+    })
+    const all = [
+      entry(2, 'lock', 'Locked uploads', false),
+      entry(1, 'upload_yaml', 'Uploaded a YAML'),
+    ]
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/audit')) {
+        const failed = url.includes('failed=true')
+        return Promise.resolve(
+          Response.json({
+            entries: failed ? all.filter((e) => !e.ok) : all,
+            next_before: null,
+            actions: { lock: 'Locked uploads', upload_yaml: 'Uploaded a YAML' },
+          }),
+        )
+      }
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/audit')
+
+    const table = await screen.findByRole('table', { name: 'Audit log' })
+    expect(within(table).getByText('Uploaded a YAML')).toBeInTheDocument()
+    expect(within(table).getByText('filename: knight.yaml')).toBeInTheDocument()
+    expect(within(table).getByText('409')).toBeInTheDocument()
+    await userEvent.click(screen.getByLabelText('Only refused or failed'))
+    await waitFor(() =>
+      expect(within(table).queryByText('Uploaded a YAML')).not.toBeInTheDocument(),
+    )
+    expect(fetchMock).toHaveBeenCalledWith('/api/audit?failed=true', expect.anything())
+  })
+})
+
 describe('archives', () => {
   const generatedGame = { ...openGame, id: 3, state: 'generated', actions: ['start'] }
   const archived = {

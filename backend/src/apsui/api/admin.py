@@ -9,7 +9,7 @@ from fastapi.requests import HTTPConnection
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from apsui import admin_auth
+from apsui import admin_auth, audit
 from apsui.admin_auth import COOKIE, AuthError
 from apsui.db import get_session
 from apsui.models import Admin
@@ -92,6 +92,7 @@ def setup(
         admin, token = admin_auth.setup(session, body.password)
     except AuthError as exc:
         raise _error(exc) from exc
+    request.state.admin = admin
     _set_cookie(request, response, token)
     return SessionOut(password_set=True, logged_in=True, username=admin.username)
 
@@ -105,13 +106,18 @@ def login(
     try:
         admin, token = admin_auth.login(session, limiter, body.password, client)
     except AuthError as exc:
+        audit.note(request, refused=exc.code)
         raise _error(exc) from exc
+    request.state.admin = admin
     _set_cookie(request, response, token)
     return SessionOut(password_set=True, logged_in=True, username=admin.username)
 
 
 @router.post("/logout")
-def logout(response: Response, session: SessionDep, token: TokenCookie = None) -> SessionOut:
+def logout(
+    request: Request, response: Response, session: SessionDep, token: TokenCookie = None
+) -> SessionOut:
+    request.state.admin = admin_auth.authenticate(session, token)  # for the audit log
     admin_auth.logout(session, token)
     response.delete_cookie(COOKIE, path="/api")
     return SessionOut(password_set=admin_auth.is_password_set(session), logged_in=False)

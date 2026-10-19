@@ -504,3 +504,39 @@ export const getSlotView = (signal?: AbortSignal) => getJson<SlotView>('/slot', 
 export const slotLogin = (name: string, password: string) =>
   postJsonBody<{ name: string }>('/slot/login', { name, password })
 export const slotLogout = () => postJson<{ ok: boolean }>('/slot/logout')
+
+export interface AuditEntry {
+  id: number
+  at: string
+  /** The admin, `shell` for apsui-admin, null for a refused login. */
+  actor: string | null
+  action: string
+  label: string
+  target: string | null
+  detail: Record<string, unknown> | null
+  status: number
+  ok: boolean
+  client: string | null
+}
+
+export interface AuditPage {
+  entries: AuditEntry[]
+  /** Pass as `before` for older entries; null on the last page. */
+  next_before: number | null
+  actions: Record<string, string>
+}
+
+export interface AuditFilter {
+  actions: string[]
+  failed: boolean
+  q: string
+}
+
+export function getAudit(filter: AuditFilter, before?: number, signal?: AbortSignal) {
+  const params = new URLSearchParams()
+  for (const action of filter.actions) params.append('action', action)
+  if (filter.failed) params.set('failed', 'true')
+  if (filter.q.trim()) params.set('q', filter.q.trim())
+  if (before) params.set('before', String(before))
+  return getJson<AuditPage>(`/audit?${params.toString()}`, { signal })
+}

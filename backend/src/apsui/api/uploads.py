@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from apsui import audit
 from apsui.config import Settings
 from apsui.db import get_session
 from apsui.jobs import JobQueue
@@ -92,6 +93,7 @@ async def upload_yaml(
     GET /api/uploads for the result. `apworld_ids` picks library apworlds for the games it
     uses; other games use their locked world, else the official one."""
     data = await file.read(MAX_YAML_BYTES + 1)
+    audit.note(request, filename=file.filename)
     settings: Settings = request.app.state.settings
     jobs: JobQueue = request.app.state.jobs
     try:
@@ -119,6 +121,7 @@ def delete_upload(request: Request, upload_id: int, session: SessionDep) -> Uplo
         upload = remove_upload(session, request.app.state.settings, upload_id)
     except UploadError as exc:
         raise _error(exc) from exc
+    audit.note(request, filename=upload.filename)
     return UploadOut.model_validate(summary(upload))
 
 
@@ -129,6 +132,7 @@ def rename_upload(
     """Give new slot names to an upload waiting for them. The YAML is edited (only its
     `name:` entries) and checked again; poll GET /api/uploads for the result."""
     names = {n.document: n.name for n in body.names}
+    audit.note(request, names=list(names.values()))
     try:
         upload = rename(
             session, request.app.state.jobs, request.app.state.settings, upload_id, names

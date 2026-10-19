@@ -732,7 +732,20 @@ Decided while building it (#30):
     the setup screen itself, the README and the LXC install's closing message.
 - **Beta:** the default admin can add more admins, each with a role that limits what
   they can do.
-- **Audit log (Alpha 2):** every admin action, with who did it and when.
+- **Audit log (Alpha 2):** every admin action, with who did it and when. Decided while
+  building it (#37):
+  - **Recorded by middleware** (`apsui.audit`), so no route can be missed: every request
+    that changes something and came from a logged-in admin, the admin login routes
+    (refused logins too, with no actor), opening the spoiler log, and `apsui-admin`
+    (actor `shell`). Reads aren't recorded.
+  - **Each entry:** when, who, the action (the route, with a label), the target from the
+    path (`apworld 3`), facts the route adds (file names, slot names, a console line,
+    which settings changed and from what to what), the HTTP status, and the client
+    address. **Never a password:** settings record `password: changed`, and a console
+    `/option password …` is stored as `••••`.
+  - **Kept 90 days, at most 20 000 entries**, pruned as new ones are written.
+  - **The Audit log tab** lists them newest first, 50 at a time, filtered by action,
+    refused or failed only, or text in the target and detail.
 - **Health page (Alpha 1):** whether each service is up, ports, disk use, the AP version,
   and the isolation mode.
   - Decided while building it (#31): the web service judges the worker by its heartbeat

@@ -2,6 +2,7 @@ import { Navigate, type RouteObject } from 'react-router'
 import { AdminGate } from './components/AdminGate'
 import { AppLayout } from './components/AppLayout'
 import { AdminPage } from './pages/AdminPage'
+import { AuditPage } from './pages/AuditPage'
 import { HealthPage } from './pages/HealthPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlayerPage } from './pages/PlayerPage'
@@ -35,6 +36,14 @@ export const routes: RouteObject[] = [
         element: (
           <AdminGate>
             <HealthPage />
+          </AdminGate>
+        ),
+      },
+      {
+        path: 'audit/*',
+        element: (
+          <AdminGate>
+            <AuditPage />
           </AdminGate>
         ),
       },

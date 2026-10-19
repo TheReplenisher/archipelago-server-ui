@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from apsui import audit
 from apsui.apworlds import (
     MAX_APWORLD_BYTES,
     ApworldError,
@@ -78,6 +79,7 @@ async def upload_apworld(request: Request, file: UploadFile, session: SessionDep
     """Upload an apworld (admin only). It is inspected at once, then import-tested by the
     worker; poll GET /api/apworlds for the result."""
     data = await file.read(MAX_APWORLD_BYTES + 1)
+    audit.note(request, filename=file.filename)
     try:
         apworld = submit_apworld(
             session, request.app.state.jobs, request.app.state.settings, file.filename or "", data
@@ -110,6 +112,7 @@ def approve_apworld(request: Request, apworld_id: int, session: SessionDep) -> A
         apworld = approve(session, request.app.state.settings, apworld_id)
     except ApworldError as exc:
         raise _error(exc) from exc
+    audit.note(request, game=apworld.game, filename=apworld.filename, sha256=apworld.sha256)
     return ApworldOut.model_validate(summary(apworld))
 
 
@@ -120,4 +123,5 @@ def reject_apworld(request: Request, apworld_id: int, session: SessionDep) -> Ap
         apworld = reject(session, request.app.state.settings, apworld_id)
     except ApworldError as exc:
         raise _error(exc) from exc
+    audit.note(request, game=apworld.game, filename=apworld.filename, sha256=apworld.sha256)
     return ApworldOut.model_validate(summary(apworld))

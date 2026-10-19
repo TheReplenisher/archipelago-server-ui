@@ -196,6 +196,7 @@ __all__ = [
     "Admin",
     "AdminSession",
     "Apworld",
+    "AuditEntry",
     "Base",
     "Game",
     "Generation",
@@ -240,3 +241,22 @@ class AdminSession(Base):
     admin_id: Mapped[int] = mapped_column(ForeignKey("admins.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AuditEntry(Base):
+    """One admin action (DESIGN.md §7, #37): who, what, when, from where, and how it went."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    actor: Mapped[str | None] = mapped_column(String(64))
+    """The admin's username; `shell` for apsui-admin; None for a failed login."""
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    target: Mapped[str | None] = mapped_column(String(255))
+    """What it acted on, e.g. `apworld 3`."""
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    """Extra facts the action recorded, never a password."""
+    status: Mapped[int] = mapped_column(Integer)
+    """The HTTP status of the request; 0 for the shell."""
+    client: Mapped[str | None] = mapped_column(String(64))

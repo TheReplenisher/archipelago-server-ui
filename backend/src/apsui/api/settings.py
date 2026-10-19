@@ -3,7 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from apsui import host_settings, hosting
+from apsui import audit, host_settings, hosting
 from apsui.api.game import SessionDep
 from apsui.host_settings import HostSettings
 from apsui.lifecycle import GameState, current_game
@@ -41,6 +41,7 @@ async def put_settings(values: HostSettings, request: Request, session: SessionD
     settings = request.app.state.settings
     old = host_settings.load(session, settings)
     host_settings.save(session, values)
+    audit.note(request, changed=host_settings.changes(old, values))
     applied = []
     if current_game(session).state == GameState.RUNNING:
         for key, line in host_settings.live_commands(old, values).items():

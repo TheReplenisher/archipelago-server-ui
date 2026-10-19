@@ -289,6 +289,17 @@ def live_commands(old: HostSettings, new: HostSettings) -> dict[str, str]:
     return lines
 
 
+def changes(old: HostSettings, new: HostSettings) -> dict[str, Any]:
+    """What a save changed, for the audit log: [old, new] by key, passwords only as
+    "changed"."""
+    found: dict[str, Any] = {}
+    for key in HostSettings.model_fields:
+        before, after = getattr(old, key), getattr(new, key)
+        if before != after:
+            found[key] = "changed" if key in ("password", "server_password") else [before, after]
+    return found
+
+
 def generate_params(values: HostSettings) -> dict[str, Any]:
     return {
         "spoiler": values.spoiler,

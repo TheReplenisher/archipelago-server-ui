@@ -148,6 +148,8 @@ oldest archives are deleted when a game is archived). The ones marked *Live* cha
 running server at once; the rest apply at the next start, generation, upload or archive.
 
 The **Spoiler log** button on the same card asks "Are you sure?" before showing anything.
+The **Audit log** tab lists every admin action: who, when, from where, and whether it
+worked.
 The **Health** tab shows each service, the ports, disk use, the Archipelago version and
 the host names the web UI answers to.
 
