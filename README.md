@@ -217,6 +217,17 @@ the proxy can reach it. Add the proxy's domain to `APSUI_ALLOWED_HOSTS`
 container of its own), set `APSUI_WEB_PORT=127.0.0.1:8000` instead and point it at
 `127.0.0.1:8000`.
 
+## Backups
+
+The **Backups** tab makes a backup of the database (settings, uploads and logs), the
+apworld library, the current game's files and, if you tick it, the archives. Backups are
+kept on the server; **download them** to keep a copy somewhere else. **Upload a backup**
+and **Restore** put one back, for example on a new install. Restoring replaces everything
+but your admin password and the audit log, and makes a backup of the current state first.
+Stop the server before restoring.
+
+Make a backup before every upgrade.
+
 ## Upgrade
 
 **Stop the server** from the admin tab first if a game is running, then:

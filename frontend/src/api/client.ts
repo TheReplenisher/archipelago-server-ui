@@ -683,3 +683,51 @@ export interface FeedEntry {
 
 export const getPlayerFeed = (after: number, signal?: AbortSignal) =>
   getJson<{ entries: FeedEntry[]; last: number }>(`/slot/feed?after=${after}`, { signal })
+
+// ---- Backups (#38)
+
+export interface Backup {
+  name: string
+  size: number
+  created_at: string
+  /** False for a file this version can't restore. */
+  readable: boolean
+  archives: boolean
+  label: string | null
+  app_version: string | null
+  archipelago_version: string | null
+  files: number
+}
+
+export interface BackupList {
+  backups: Backup[]
+  making: boolean
+  total_size: number
+}
+
+export const listBackups = (signal?: AbortSignal) => getJson<BackupList>('/backups', { signal })
+export const createBackup = (archives: boolean) =>
+  postJsonBody<{ ok: boolean }>('/backups', { archives })
+export const deleteBackup = (name: string) =>
+  getJson<{ ok: boolean }>(`/backups/${encodeURIComponent(name)}`, { method: 'DELETE' })
+export const restoreBackup = (name: string) =>
+  postJson<{ restored: string; created_at: string; archives: boolean }>(
+    `/backups/${encodeURIComponent(name)}/restore`,
+  )
+export const backupUrl = (name: string) => `/api/backups/${encodeURIComponent(name)}`
+
+const PIECE = 8 * 1024 * 1024
+
+/** Upload a backup file in 8 MB pieces, so a proxy's body limit doesn't matter. */
+export async function uploadBackup(file: File, onProgress: (done: number) => void) {
+  const { id } = await postJson<{ id: string }>('/backups/incoming')
+  for (let offset = 0; offset < file.size; offset += PIECE) {
+    await getJson<{ size: number }>(`/backups/incoming/${id}?offset=${offset}`, {
+      method: 'PUT',
+      body: file.slice(offset, offset + PIECE),
+      headers: { 'Content-Type': 'application/octet-stream' },
+    })
+    onProgress(Math.min(offset + PIECE, file.size) / file.size)
+  }
+  return postJsonBody<Backup>(`/backups/incoming/${id}/finish`, { filename: file.name })
+}

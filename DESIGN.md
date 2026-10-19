@@ -173,7 +173,7 @@ hosting work. Each release is tested under emulated arm64 before it ships.
                         (shared with the server)
   staging/              (Beta) uploads for the next game while one is running
   archives/<id>/        archived games: their files and archive.json (#19)
-  backups/              (Alpha 2) app backups
+  backups/              app backups (#38), and .incoming/ for ones being uploaded
 ```
 
 ## 3. Game lifecycle
@@ -809,7 +809,29 @@ Decided while building it (#30):
     (`APSUI_PUBLIC_WEB_PORT`, `APSUI_PUBLIC_GAME_PORT`, `APSUI_ISOLATION=compose`).
     Anything other than `compose` or `lxc` shows a reduced-isolation warning; a plain
     development run is `none`.
-- **Backup and restore (Alpha 2):** the app database, library and archives.
+- **Backup and restore (Alpha 2):** the app database, library and archives. Decided while
+  building it (#38):
+  - **A backup is one zip in `data/backups/`:** a consistent snapshot of app.db (SQLite's
+    backup API, while the app runs), the library, files waiting in `uploads/`, the current
+    game's `yamls/`, `output/` and `logs/`, and the archives unless the admin leaves them
+    out. `backup.json` lists each file's size and SHA-256 and the app, Archipelago and
+    database versions. Only regular files are copied, never through a symlink.
+  - **Made in the background,** kept until deleted, downloadable. A backup file is
+    uploaded in pieces of up to 16 MB (8 MB from the page), so a reverse proxy's body
+    limit doesn't matter, then checked before it is listed.
+  - **Restore** refuses while the server runs, a generation is under way, or the worker
+    has jobs. It makes a safety backup of the current state first (`…-before-restore`,
+    without archives), checks every file against the manifest before touching anything,
+    then copies the database into the live one in place (SQLite's backup API again),
+    migrates it, and replaces the folders. The API answers 503 `restoring` meanwhile.
+  - **What stays as it is now:** the admin's password and logins, and the audit log; a
+    restore mustn't lock the admin out or rewind the record of who did what. Players are
+    logged out of their slots.
+  - **What can't resume is settled:** checks under way are rejected as `interrupted`, a
+    generation under way failed, a Generating game is Locked and a Running one Generated.
+  - **A backup from a newer version** (a database revision this one doesn't know) is
+    refused; an older one is migrated. A backup without archives leaves the archives as
+    they are.
 
 ## 8. Networking and security
 

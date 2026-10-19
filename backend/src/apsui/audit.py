@@ -63,6 +63,11 @@ ACTIONS: dict[str, str] = {
     "override_world": "Changed a game's locked version",
     # settings
     "put_settings": "Changed settings",
+    # backups (#38)
+    "create_backup": "Made a backup",
+    "delete_backup": "Deleted a backup",
+    "finish_upload": "Uploaded a backup",
+    "restore_backup": "Restored a backup",
 }
 """Each audited endpoint's label. One missing from here still logs, by its name."""
 
@@ -130,6 +135,8 @@ def _target(path_params: dict[str, Any]) -> str | None:
     parts = [f"{_TARGETS.get(k, k)} {v}" for k, v in path_params.items() if k in _TARGETS]
     if "file" in path_params:
         parts.append(str(path_params["file"]))
+    if "name" in path_params:
+        parts.append(str(path_params["name"]))
     if "path" in path_params:
         parts.append(str(path_params["path"]))
     return ", ".join(parts) or None

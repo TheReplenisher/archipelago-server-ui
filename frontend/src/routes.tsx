@@ -3,6 +3,7 @@ import { AdminGate } from './components/AdminGate'
 import { AppLayout } from './components/AppLayout'
 import { AdminPage } from './pages/AdminPage'
 import { AuditPage } from './pages/AuditPage'
+import { BackupsPage } from './pages/BackupsPage'
 import { HealthPage } from './pages/HealthPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { PlayerPage } from './pages/PlayerPage'
@@ -44,6 +45,14 @@ export const routes: RouteObject[] = [
         element: (
           <AdminGate>
             <AuditPage />
+          </AdminGate>
+        ),
+      },
+      {
+        path: 'backups/*',
+        element: (
+          <AdminGate>
+            <BackupsPage />
           </AdminGate>
         ),
       },

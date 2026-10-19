@@ -1233,6 +1233,71 @@ describe('audit log', () => {
   })
 })
 
+describe('backups', () => {
+  it('makes, uploads and restores backups, asking before a restore', async () => {
+    const backup = (name: string) => ({
+      name,
+      size: 3 * 1024 * 1024,
+      created_at: '2026-10-19T00:00:00Z',
+      readable: true,
+      archives: true,
+      label: null,
+      app_version: '0.1.0a2',
+      archipelago_version: '0.6.8',
+      files: 12,
+    })
+    let backups = [backup('apsui-20261019-000000.zip')]
+    const calls: string[] = []
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+      if (url.startsWith('/api/backups')) calls.push(`${method} ${url}`)
+      if (url === '/api/backups' && method === 'GET')
+        return Promise.resolve(
+          Response.json({ backups, making: false, total_size: backups.length * 3 * 1024 ** 2 }),
+        )
+      if (url === '/api/backups' && method === 'POST') {
+        backups = [backup('apsui-20261019-010000.zip'), ...backups]
+        return Promise.resolve(Response.json({ ok: true }, { status: 202 }))
+      }
+      if (url === '/api/backups/incoming')
+        return Promise.resolve(Response.json({ id: 'a'.repeat(24) }, { status: 201 }))
+      if (url.startsWith('/api/backups/incoming/') && method === 'PUT')
+        return Promise.resolve(Response.json({ size: 4 }))
+      if (url.endsWith('/finish')) {
+        backups = [...backups, backup('mine.zip')]
+        return Promise.resolve(Response.json(backup('mine.zip')))
+      }
+      if (url.endsWith('/restore'))
+        return Promise.resolve(
+          Response.json({ restored: 'mine.zip', created_at: '', archives: true }),
+        )
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/backups')
+
+    const table = await screen.findByRole('table', { name: 'Backups' })
+    expect(within(table).getByText('apsui-20261019-000000.zip')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Make a backup' }))
+    expect(await within(table).findByText('apsui-20261019-010000.zip')).toBeInTheDocument()
+
+    const input = document.querySelector('input[type=file][accept*=".zip"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['data'], 'mine.zip', { type: 'application/zip' }))
+    expect(await screen.findByText('Uploaded mine.zip. Restore it from the list.')).toBeVisible()
+    expect(calls).toContain(`PUT /api/backups/incoming/${'a'.repeat(24)}?offset=0`)
+
+    const row = within(table).getByText('mine.zip').closest('tr') as HTMLElement
+    await userEvent.click(within(row).getByRole('button', { name: 'Restore' }))
+    expect(await screen.findByText(/A backup of the current state is made first/)).toBeVisible()
+    await userEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Restore' }),
+    )
+    expect(await screen.findByText('Restored mine.zip.')).toBeInTheDocument()
+    expect(calls).toContain('POST /api/backups/mine.zip/restore')
+  })
+})
+
 describe('archives', () => {
   const generatedGame = { ...openGame, id: 3, state: 'generated', actions: ['start'] }
   const archived = {

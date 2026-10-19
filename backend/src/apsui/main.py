@@ -1,10 +1,11 @@
 import asyncio
 import functools
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 
 from apsui import __version__, audit, migrate
 from apsui.admin_auth import LoginLimiter
@@ -43,6 +44,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         async def collect_jobs() -> None:
             def collect_once() -> None:
+                if app.state.maintenance:  # a restore is replacing the database (#38)
+                    return
                 with sessionmaker() as session:
                     jobs.collect(session)
 
@@ -66,6 +69,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.admin_logins = LoginLimiter()
     app.state.player_uploads = UploadLimiter()
+    app.state.maintenance = False
+
+    @app.middleware("http")
+    async def maintenance(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """While a restore replaces the data, the API answers 503 (#38)."""
+        path = request.url.path
+        if app.state.maintenance and path.startswith("/api/") and path != "/api/health":
+            detail = {"code": "restoring", "message": "A backup is being restored"}
+            return JSONResponse({"detail": detail}, status_code=503)
+        return await call_next(request)
+
     app.middleware("http")(audit.middleware)
     app.add_middleware(SameOriginGuard, allowed_hosts=settings.allowed_hosts)
     app.include_router(api_router)

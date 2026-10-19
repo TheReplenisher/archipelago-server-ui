@@ -183,6 +183,12 @@ class SlotViews:
             await self.observer.close()
             self.observer = None
 
+    async def reset(self) -> None:
+        """Forget every session and connection: the data under them was replaced (#38)."""
+        await self.close()
+        self.sessions.clear()
+        self.feed = Feed()
+
     async def close(self) -> None:
         for tracker in list(self.trackers.values()):
             await tracker.close()
