@@ -82,6 +82,8 @@ class HostSettings(BaseModel):
     # Uploads
     max_slots: int = Field(default=50, ge=1, le=1000)
     apworld_approval: Literal["manual", "auto"] = "manual"
+    player_uploads: bool = True
+    player_apworld_approval: Literal["manual", "auto"] = "manual"
     # Archives
     archive_limit: Literal["none", "count", "size"] = "none"
     archive_max_count: int = Field(default=20, ge=1, le=10_000)
@@ -171,6 +173,15 @@ FIELDS: list[FieldInfo] = [
               "checks needs your approval. One that replaces a built-in world always does.",
               "uploads", "choice", "upload",
               _choices(("manual", "Manual"), ("auto", "Automatic"))),
+    FieldInfo("player_uploads", "Anyone can upload", "Players upload their own YAMLs and "
+              "apworlds on the Player tab while uploads are open. Off: only you upload.",
+              "uploads", "bool", "upload"),
+    FieldInfo("player_apworld_approval", "Players' apworlds",
+              "Whether an apworld a player uploads waits for your approval after its checks. "
+              "One that replaces a built-in world always does.", "uploads", "choice", "upload",
+              _choices(("manual", "I approve each one"), ("auto", "Approve automatically")),
+              warning="An apworld is Python code that runs on this server. Approve players' "
+              "apworlds automatically only if you trust everyone who can open the Player tab."),
     FieldInfo("archive_limit", "Archive limit", "Each time a game is archived, the oldest "
               "archives are deleted until the rest fit. The newest is always kept.",
               "archives", "choice", "archive",

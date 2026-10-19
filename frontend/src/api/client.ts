@@ -129,6 +129,9 @@ export interface Upload {
   status: UploadStatus
   error_code: string | null
   error_message: string | null
+  /** admin, or player (from the Player tab). */
+  uploaded_by?: string
+  uploaded_from?: string | null
   uploaded_at: string
   checked_at: string | null
   slots: string[]
@@ -180,6 +183,7 @@ export interface Apworld {
   error_code: string | null
   error_message: string | null
   uploaded_by: string
+  uploaded_from?: string | null
   uploaded_at: string
   checked_at: string | null
   decided_at: string | null
@@ -540,3 +544,103 @@ export function getAudit(filter: AuditFilter, before?: number, signal?: AbortSig
   if (before) params.set('before', String(before))
   return getJson<AuditPage>(`/audit?${params.toString()}`, { signal })
 }
+
+// ---- Player uploads (#33)
+
+export interface PlayerGame {
+  state: GameState
+  /** Players can upload now: the game is Open and the admin allows it. */
+  uploads_open: boolean
+  player_uploads: boolean
+  apworld_approval: 'manual' | 'auto'
+  max_slots: number
+  slots_used: number
+  taken_names: string[]
+}
+
+export const getPlayerGame = (signal?: AbortSignal) =>
+  getJson<PlayerGame>('/player/game', { signal })
+
+export interface PlayerLibrary {
+  apworlds: { id: number; label: string; game: string; replaces_builtin: boolean }[]
+  locked: { world: string; label: string }[]
+}
+
+export const getPlayerLibrary = (signal?: AbortSignal) =>
+  getJson<PlayerLibrary>('/player/library', { signal })
+
+/** What a player sees of their own upload: status and the short error, never the detail. */
+export interface PlayerUpload {
+  kind: 'yaml' | 'apworld'
+  id: number
+  filename: string
+  status: UploadStatus | 'checking' | 'pending' | 'approved'
+  error_code: string | null
+  error_message: string | null
+  /** YAML: its slots, and what needs a new name. */
+  slots?: string[]
+  name_problems?: NameProblem[]
+  current_game?: boolean
+  /** Apworld: its library label, and whether it replaces a built-in world. */
+  label?: string
+  game?: string | null
+  replaces_builtin?: boolean
+  uploaded_at: string
+}
+
+/** The key to a player's own upload, kept in their browser. */
+export interface Receipt {
+  kind: 'yaml' | 'apworld'
+  id: number
+  receipt: string
+}
+
+const RECEIPTS_KEY = 'apsui.receipts'
+const MAX_RECEIPTS = 50
+
+export function loadReceipts(): Receipt[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(RECEIPTS_KEY) ?? '[]')
+    return Array.isArray(stored) ? (stored as Receipt[]) : []
+  } catch {
+    return []
+  }
+}
+
+export function saveReceipts(receipts: Receipt[]) {
+  try {
+    localStorage.setItem(RECEIPTS_KEY, JSON.stringify(receipts.slice(-MAX_RECEIPTS)))
+  } catch {
+    // Private windows and blocked storage: the receipts last as long as the page.
+  }
+}
+
+interface Uploaded {
+  receipt: string
+  upload: PlayerUpload
+}
+
+export function playerUploadYaml(file: File, apworldIds: number[] = []) {
+  const form = new FormData()
+  form.append('file', file)
+  for (const id of apworldIds) form.append('apworld_ids', String(id))
+  return postJson<Uploaded>('/player/yaml', form)
+}
+
+export function playerUploadApworld(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return postJson<Uploaded>('/player/apworld', form)
+}
+
+export const getPlayerUploads = (receipts: Receipt[]) =>
+  postJsonBody<PlayerUpload[]>('/player/receipts', { receipts })
+
+export const playerRename = (receipt: Receipt, names: { document: number; name: string }[]) =>
+  postJsonBody<PlayerUpload>(`/player/yaml/${receipt.id}/rename`, {
+    receipt: receipt.receipt,
+    names,
+  })
+
+export const playerWithdraw = (receipt: Receipt) =>
+  postJsonBody<PlayerUpload>(`/player/yaml/${receipt.id}/withdraw`, { receipt: receipt.receipt })

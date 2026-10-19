@@ -135,6 +135,12 @@ Everything else is on the **Admin** tab.
    archive, download it as a zip, delete it, or **Restore** it as the current game; if
    the current game has anything in it, you choose to archive or delete it first.
 
+Players upload their own YAMLs on the **Player** tab while the game is Open, unless you
+turn off **Anyone can upload** in Settings. Their apworlds wait for your approval after
+their checks (Settings can approve them automatically, at your own risk: an apworld is
+Python code). Their browser keeps a receipt for each upload, so they can see its result,
+fix a slot name, or withdraw it.
+
 Players use the **Player** tab while the server runs: their slot name and the room
 password (as in their game client) show the items they've received, the locations they
 haven't checked, their hints, and, as the room's `!remaining` setting allows, the items

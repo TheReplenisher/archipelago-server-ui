@@ -188,7 +188,7 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
 
 | State | Meaning |
 |---|---|
-| **Open** | Uploads accepted (admin-only in Alpha 1; players from Alpha 2) |
+| **Open** | Uploads accepted: the admin's, and players' from the Player tab unless the admin turns that off (#33) |
 | **Locked** | Uploads frozen; admin reviews before generating |
 | **Generating** | Worker runs generation. Failures go to the generation log, and the state returns to Locked |
 | **Generated** | Output exists and the server is stopped. The admin can start it, run the **test server** (Beta), or discard the output to change uploads |
@@ -440,7 +440,33 @@ Decided while building it (#23):
   the renames are listed with the reasons they were needed.
 - **Error codes link to the entry:** in the admin's upload lists, the code after a short
   error opens that upload's log. Entries are addressed as `<kind>-<id>`.
-- **"Who" is always the admin in Alpha 1;** player uploads (#30) will record the slot.
+- **"Who" is the admin, or `player` with the client address** for uploads from the
+  Player tab (#33).
+
+### Player uploads (Alpha 2, #33)
+
+Decided with conne (2026-10-18) and while building it:
+
+- **Behind an admin setting, *Anyone can upload*, on by default.** While the game is Open,
+  players upload YAMLs and apworlds on the Player tab, and they get every check the
+  admin's uploads get. Off, or once the game is locked, the Player tab doesn't offer it
+  and the API refuses (`player-uploads-off`, `uploads-closed`).
+- **Players' apworlds wait for the admin** after their automatic checks, whatever the
+  admin's own approval setting. A separate setting, *Players' apworlds*, approves them
+  automatically; picking it shows a warning that an apworld is Python code running on the
+  server. A built-in replacement always waits.
+- **Players have no account; each upload returns a receipt,** a random token their browser
+  keeps (localStorage). app.db keeps only its SHA-256. With it, and only with it, a player
+  sees that upload's status and short error (never the worker's detail), gives new slot
+  names when asked, or withdraws it while uploads are open. Receipts are sent in POST
+  bodies, so they stay out of URLs and proxy logs.
+- **The library a player can pick from** is the approved apworlds and the versions the
+  game is already locked to (`/api/player/library`); the slot names already taken are
+  shown too, since a new one has to differ.
+- **Limits per client address:** 30 YAMLs per 10 minutes, 5 apworlds per hour; and at most
+  10 players' apworlds checking or waiting for the admin at once (`too-many-waiting`).
+- **The admin's lists mark players' files** (`player`, with the address on hover), and the
+  upload log records who and from where.
 
 ## 5. Running the server
 

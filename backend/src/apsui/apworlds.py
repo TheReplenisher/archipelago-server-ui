@@ -73,7 +73,15 @@ def library_path(settings: Settings, apworld: Apworld) -> Path:
 
 
 def submit_apworld(
-    session: Session, jobs: JobQueue, settings: Settings, filename: str, data: bytes
+    session: Session,
+    jobs: JobQueue,
+    settings: Settings,
+    filename: str,
+    data: bytes,
+    *,
+    uploaded_by: str = "admin",
+    uploaded_from: str | None = None,
+    receipt_hash: str | None = None,
 ) -> Apworld:
     if len(data) > MAX_APWORLD_BYTES:
         raise ApworldError("too-large", "Apworld file is too large", 413)
@@ -83,8 +91,10 @@ def submit_apworld(
         sha256="",
         size=len(data),
         status="checking",
-        uploaded_by="admin",
+        uploaded_by=uploaded_by,
         uploaded_at=datetime.now(UTC),
+        uploaded_from=uploaded_from,
+        receipt_hash=receipt_hash,
     )
     try:
         found = inspect_apworld(filename, data, settings.archipelago_version)
@@ -168,7 +178,14 @@ def _finish(session: Session, apworld: Apworld, job: Job, settings: Settings) ->
         _reject(settings, apworld, "import-failed", f"The apworld failed to load: {message}")
         return
     apworld.status = "pending"
-    auto = host_settings.load(session, settings).apworld_approval == "auto"
+    values = host_settings.load(session, settings)
+    # Players' apworlds follow their own setting (#33): manual unless the admin trusts them.
+    approval = (
+        values.apworld_approval
+        if apworld.uploaded_by == "admin"
+        else (values.player_apworld_approval)
+    )
+    auto = approval == "auto"
     if auto and result.replaces_builtin is None:
         _approve(settings, apworld)
 
@@ -236,6 +253,7 @@ def summary(apworld: Apworld) -> dict[str, Any]:
         "error_code": apworld.error_code,
         "error_message": apworld.error_message,
         "uploaded_by": apworld.uploaded_by,
+        "uploaded_from": apworld.uploaded_from,
         "uploaded_at": apworld.uploaded_at,
         "checked_at": apworld.checked_at,
         "decided_at": apworld.decided_at,

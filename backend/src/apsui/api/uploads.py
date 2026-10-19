@@ -45,6 +45,9 @@ class UploadOut(BaseModel):
     status: str
     error_code: str | None
     error_message: str | None
+    uploaded_by: str
+    """admin, or player (from the Player tab, #33)."""
+    uploaded_from: str | None
     uploaded_at: datetime
     checked_at: datetime | None
     slots: list[str]

@@ -1243,6 +1243,63 @@ describe('archives', () => {
   })
 })
 
+describe('player uploads', () => {
+  const openForPlayers = {
+    state: 'open',
+    uploads_open: true,
+    player_uploads: true,
+    apworld_approval: 'manual',
+    max_slots: 50,
+    slots_used: 1,
+    taken_names: ['Hornet'],
+  }
+
+  it('uploads a YAML, keeps the receipt, and shows the result', async () => {
+    let status = 'pending'
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/player/game') return Promise.resolve(Response.json(openForPlayers))
+      if (url === '/api/player/library')
+        return Promise.resolve(Response.json({ apworlds: [], locked: [] }))
+      const upload = () => ({
+        kind: 'yaml',
+        id: 7,
+        filename: 'knight.yaml',
+        status,
+        error_code: null,
+        error_message: null,
+        slots: status === 'accepted' ? ['Knight'] : [],
+        name_problems: [],
+        current_game: true,
+        uploaded_at: '2026-10-19T00:00:00Z',
+      })
+      if (url === '/api/player/yaml')
+        return Promise.resolve(Response.json({ receipt: 'secret-receipt', upload: upload() }))
+      if (url === '/api/player/receipts') {
+        const found = [upload()]
+        status = 'accepted'
+        return Promise.resolve(Response.json(found))
+      }
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderRoute('/player')
+
+    expect(await screen.findByText(/1 of 50 slots are taken/)).toBeInTheDocument()
+    expect(screen.getByText('Taken slot names: Hornet')).toBeInTheDocument()
+    const input = document.querySelector('input[type=file][accept*=".yaml"]') as HTMLInputElement
+    await userEvent.upload(input, new File(['name: Knight'], 'knight.yaml'))
+    expect(await screen.findByText('Slots: Knight', {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('apsui.receipts') ?? '[]')).toEqual([
+      { kind: 'yaml', id: 7, receipt: 'secret-receipt' },
+    ])
+    const receiptsCall = fetchMock.mock.calls.find(([url]) => url === '/api/player/receipts')
+    expect(JSON.parse(String(receiptsCall?.[1]?.body))).toEqual({
+      receipts: [{ kind: 'yaml', id: 7, receipt: 'secret-receipt' }],
+    })
+  })
+})
+
 describe('player page', () => {
   const view = {
     slot: { name: 'Knight', game: 'APQuest', team: 0, slot: 1 },

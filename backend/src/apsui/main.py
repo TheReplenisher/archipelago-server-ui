@@ -14,6 +14,7 @@ from apsui.config import Settings, get_settings
 from apsui.db import make_engine, make_sessionmaker
 from apsui.generation import finish_generation
 from apsui.jobs import JobQueue
+from apsui.player_uploads import UploadLimiter
 from apsui.same_origin import SameOriginGuard
 from apsui.slots import SlotViews
 from apsui.spa import SPAStaticFiles
@@ -64,6 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="Archipelago Server UI", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.admin_logins = LoginLimiter()
+    app.state.player_uploads = UploadLimiter()
     app.middleware("http")(audit.middleware)
     app.add_middleware(SameOriginGuard, allowed_hosts=settings.allowed_hosts)
     app.include_router(api_router)

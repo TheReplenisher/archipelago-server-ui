@@ -41,6 +41,7 @@ class ApworldOut(BaseModel):
     error_code: str | None
     error_message: str | None
     uploaded_by: str
+    uploaded_from: str | None
     uploaded_at: datetime
     checked_at: datetime | None
     decided_at: datetime | None

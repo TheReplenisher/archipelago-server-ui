@@ -87,8 +87,13 @@ class Upload(Base):
     job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"))
     """The latest check. A rename checks the file again with a new job."""
     uploaded_by: Mapped[str] = mapped_column(String(64), server_default="admin")
-    """Only the admin uploads in Alpha 1."""
+    """`admin`, or `player` from the Player tab (#33)."""
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    uploaded_from: Mapped[str | None] = mapped_column(String(64))
+    """A player's client address."""
+    receipt_hash: Mapped[str | None] = mapped_column(String(64))
+    """SHA-256 of the receipt a player got for it, which lets them see, rename or
+    withdraw it (#33)."""
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     slots: Mapped[list[Slot]] = relationship(
@@ -145,6 +150,10 @@ class Apworld(Base):
     uploaded_by: Mapped[str] = mapped_column(String(64))
     """Only the admin uploads in Alpha 1."""
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    uploaded_from: Mapped[str | None] = mapped_column(String(64))
+    """A player's client address."""
+    receipt_hash: Mapped[str | None] = mapped_column(String(64))
+    """SHA-256 of the receipt a player got for it (#33)."""
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     """When it was approved or rejected."""

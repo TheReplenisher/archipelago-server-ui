@@ -34,6 +34,7 @@ def entry(item: Upload | Apworld) -> dict[str, Any]:
         "error_code": item.error_code,
         "error_message": item.error_message,
         "uploaded_by": item.uploaded_by,
+        "uploaded_from": item.uploaded_from,
         "uploaded_at": item.uploaded_at,
         "game_id": item.game_id if isinstance(item, Upload) else None,
     }

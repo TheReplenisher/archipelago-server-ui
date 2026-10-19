@@ -14,6 +14,7 @@ import { IconUpload } from '@tabler/icons-react'
 import { useEffect, useState } from 'react'
 import { ErrorCode } from './ErrorCode'
 import { FixNamesModal } from './FixNamesModal'
+import { UploadedBy } from './UploadedBy'
 import {
   listApworlds,
   listUploads,
@@ -165,7 +166,10 @@ export function Uploads() {
               <Table.Tbody>
                 {uploads.map((u) => (
                   <Table.Tr key={u.id}>
-                    <Table.Td>{u.filename}</Table.Td>
+                    <Table.Td>
+                      {u.filename}
+                      <UploadedBy by={u.uploaded_by} from={u.uploaded_from} />
+                    </Table.Td>
                     <Table.Td>
                       <Badge color={statusColor[u.status]} variant="light">
                         {statusLabel[u.status] ?? u.status}

@@ -94,6 +94,10 @@ def submit_yaml(
     filename: str,
     data: bytes,
     apworld_ids: Sequence[int] = (),
+    *,
+    uploaded_by: str = "admin",
+    uploaded_from: str | None = None,
+    receipt_hash: str | None = None,
 ) -> Upload:
     """Store the file and have the worker check it, with the library apworlds picked for
     it and the locked custom world of every other game."""
@@ -117,8 +121,10 @@ def submit_yaml(
         size=len(data),
         status="pending",
         worlds={game_name: apworld.id for game_name, apworld in chosen.items()},
-        uploaded_by="admin",
+        uploaded_by=uploaded_by,
         uploaded_at=datetime.now(UTC),
+        uploaded_from=uploaded_from,
+        receipt_hash=receipt_hash,
     )
     session.add(upload)
     session.flush()
@@ -393,6 +399,8 @@ def summary(upload: Upload) -> dict[str, Any]:
         "status": upload.status,
         "error_code": upload.error_code,
         "error_message": upload.error_message,
+        "uploaded_by": upload.uploaded_by,
+        "uploaded_from": upload.uploaded_from,
         "uploaded_at": upload.uploaded_at,
         "checked_at": upload.checked_at,
         "slots": [slot.name for slot in upload.slots],

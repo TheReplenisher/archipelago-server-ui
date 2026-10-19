@@ -9,6 +9,7 @@ from apsui.api import (
     game,
     health,
     logs,
+    player,
     server,
     settings,
     slot,
@@ -21,6 +22,7 @@ router = APIRouter(prefix="/api")
 router.include_router(health.router)
 router.include_router(admin.router)
 router.include_router(slot.router)
+router.include_router(player.router)
 # Everything else is the admin's (#32).
 admin_only = [Depends(require_admin)]
 router.include_router(health.details_router, dependencies=admin_only)
