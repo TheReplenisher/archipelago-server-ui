@@ -144,7 +144,8 @@ fix a slot name, or withdraw it.
 Players use the **Player** tab while the server runs: their slot name and the room
 password (as in their game client) show the items they've received, the locations they
 haven't checked, their hints, and, as the room's `!remaining` setting allows, the items
-still out there. Nothing shows where an item is unless a hint says so. While the server is
+still out there; their own patch file to download; and a **Server feed** of item sends,
+chat and goals. Nothing shows where an item is unless a hint says so. While the server is
 stopped, the tab says so and asks them to contact you.
 
 The **Settings** tab holds the server's host.yaml settings (room password, release and

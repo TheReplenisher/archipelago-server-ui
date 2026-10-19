@@ -563,6 +563,19 @@ Decided with conne (2026-10-18) and while building it:
     Manager and Traefik do by default).
   - The page keeps the last 2000 lines, follows the newest unless the admin scrolls up,
     and reconnects after 2 seconds.
+- Decided while building the player feed (#35):
+  - **One observer connection** (`apsui.player_feed`), as the game's first slot with the
+    `Tracker` tag and the room password from the settings, collects MultiServer's
+    PrintJSON messages. It opens when a logged-in player first asks for the feed, and
+    closes after 30 minutes nobody looks, when the server stops, or for a new game.
+  - **Only what every player already sees** in their own client: item sends, `/send`
+    cheats, chat, server chat, joins and parts, goals, releases, collects, countdowns.
+    Hints, tutorials and command results are addressed to the observer's own slot, so
+    they are dropped: one slot's hints never reach the others.
+  - **Rendered as parts** (player, item with its flags, location, text), names from the
+    data package. The last 500 entries are kept, numbered; the slot view's **Server feed**
+    tab polls for new ones every 3 seconds (`/api/slot/feed?after=`), and needs a slot
+    login like the rest of the slot view.
 
 ### Spoiler log
 
