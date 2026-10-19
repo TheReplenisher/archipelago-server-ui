@@ -35,6 +35,22 @@ from apsui.models import Apworld, Game, Upload
 
 PLAYER = "player"
 MAX_PENDING_APWORLDS = 10
+MAX_BODY = {"/api/player/apworld": 65 * 1024 * 1024}
+"""The largest request body each player route takes, by path; 1 MB for the rest. Checked
+on Content-Length before the body is read: Starlette would otherwise spool a whole
+upload to disk first, and these routes are open to anyone."""
+MAX_BODY_DEFAULT = 1024 * 1024
+
+
+def body_too_large(path: str, content_length: str | None) -> str | None:
+    """Why a player request's body is refused before it is read, or None."""
+    if content_length is None:
+        return "length-required"
+    try:
+        length = int(content_length)
+    except ValueError:
+        return "length-required"
+    return "too-large" if length > MAX_BODY.get(path, MAX_BODY_DEFAULT) else None
 
 
 class PlayerError(Exception):

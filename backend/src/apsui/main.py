@@ -15,7 +15,7 @@ from apsui.config import Settings, get_settings
 from apsui.db import make_engine, make_sessionmaker
 from apsui.generation import finish_generation
 from apsui.jobs import JobQueue
-from apsui.player_uploads import UploadLimiter
+from apsui.player_uploads import UploadLimiter, body_too_large
 from apsui.same_origin import SameOriginGuard
 from apsui.slots import SlotViews
 from apsui.spa import SPAStaticFiles
@@ -80,6 +80,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if app.state.maintenance and path.startswith("/api/") and path != "/api/health":
             detail = {"code": "restoring", "message": "A backup is being restored"}
             return JSONResponse({"detail": detail}, status_code=503)
+        if path.startswith("/api/player/") and request.method == "POST":
+            refused = body_too_large(path, request.headers.get("content-length"))
+            if refused:
+                status = 411 if refused == "length-required" else 413
+                detail = {"code": refused, "message": "That upload is too large"}
+                return JSONResponse({"detail": detail}, status_code=status)
         return await call_next(request)
 
     app.middleware("http")(audit.middleware)

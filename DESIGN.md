@@ -477,6 +477,9 @@ Decided with conne (2026-10-18) and while building it:
   shown too, since a new one has to differ.
 - **Limits per client address:** 30 YAMLs per 10 minutes, 5 apworlds per hour; and at most
   10 players' apworlds checking or waiting for the admin at once (`too-many-waiting`).
+- **Request size is checked before the body is read** (`Content-Length`: 65 MB for an
+  apworld, 1 MB for the rest; 411 without one), since Starlette would otherwise spool a
+  whole upload to disk first and these routes are open to anyone.
 - **The admin's lists mark players' files** (`player`, with the address on hover), and the
   upload log records who and from where.
 

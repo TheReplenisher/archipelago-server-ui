@@ -185,3 +185,11 @@ def test_player_routes_need_no_admin_login(client: TestClient) -> None:
     assert client.get("/api/player/game").status_code == 200
     assert client.get("/api/player/library").status_code == 200
     assert upload_yaml(client)["receipt"]
+
+
+def test_a_huge_body_is_refused_before_it_is_read(client: TestClient) -> None:
+    big = b"x" * (2 * 1024 * 1024)
+    response = client.post("/api/player/yaml", files={"file": ("big.yaml", big)})
+    assert (response.status_code, response.json()["detail"]["code"]) == (413, "too-large")
+    assert player_uploads.body_too_large("/api/player/yaml", None) == "length-required"
+    assert player_uploads.body_too_large("/api/player/apworld", str(10 * 1024 * 1024)) is None

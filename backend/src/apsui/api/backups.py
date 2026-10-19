@@ -126,9 +126,13 @@ async def upload_piece(
     upload_id: str, request: Request, offset: Annotated[int, Query(ge=0)]
 ) -> dict[str, int]:
     """One piece (at most 16 MB) of the file, as the raw request body, at `offset`."""
-    data = await request.body()
+    data = bytearray()
+    async for chunk in request.stream():  # read no more than a piece can be
+        data += chunk
+        if len(data) > backups.MAX_CHUNK:
+            raise _error(backups.BackupError("too-large", "A piece can be at most 16 MB", 413))
     try:
-        size = backups.append_incoming(request.app.state.settings, upload_id, offset, data)
+        size = backups.append_incoming(request.app.state.settings, upload_id, offset, bytes(data))
     except backups.BackupError as exc:
         raise _error(exc) from exc
     return {"size": size}
