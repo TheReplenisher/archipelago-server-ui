@@ -102,6 +102,22 @@ def test_a_crashed_worker_job_shows_its_traceback(client: TestClient) -> None:
     assert "Traceback" not in str(upload)
 
 
+@pytest.mark.parametrize(
+    "output",
+    [
+        {"error": None, "documents": [{"empty": False, "name": "Knight"}]},  # no index
+        {"error": None, "documents": "not a list"},
+    ],
+)
+def test_a_malformed_worker_result_shows_as_a_failed_check(client: TestClient, output: Any) -> None:
+    upload_id = upload_yaml(client)
+    worker_finishes(client, {"validate-yaml": output})
+    entry = log(client, "yaml", upload_id)
+    assert checks(entry) == [("Stored", "ok"), ("Worker result", "failed")]
+    assert '"documents"' in entry["checks"][1]["detail"]  # the raw output, for the admin
+    assert client.get("/api/uploads").json()[0]["error_code"] == "check-failed"
+
+
 def test_a_renamed_slot_is_in_the_log(client: TestClient) -> None:
     upload_id = upload_yaml(client)
     name_error = {"code": "name-not-fixed", "message": "Slot name must be one fixed name"}
