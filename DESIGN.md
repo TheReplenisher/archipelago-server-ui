@@ -235,6 +235,10 @@ Open ──► Locked ──► Generating ──► Generated ──► Running
   `logs/`, `apworlds/` (copies of the library apworlds the game was locked to) and
   `archive.json` (slots, worlds, the generation log and the upload log), so a downloaded
   zip stands on its own. The game's database rows stay; the game folder is emptied.
+- **Archived YAMLs are named by slot (#105):** `Alice.yaml`, or `Alice+Bob.yaml` for a file
+  with several slots; characters a file name can't hold become `_`, and a clash gets `-2`,
+  `-3`. `archive.json`'s `yaml_files` maps each one to its upload ID, and restore puts them
+  back as `<upload id>.yaml`. Alpha 1 archives (`<id>.yaml`, no map) restore as they are.
 - **Only regular files are copied out of the game folder,** never through a symlink: the
   server service, which runs apworld code, can write there.
 - **Restore returns a game to the state it was archived from** (Running comes back

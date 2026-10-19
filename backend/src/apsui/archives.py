@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import stat
 import zipfile
@@ -52,6 +53,8 @@ GAME_PARTS = ("yamls", "output", "logs")
 """What is kept from the game folder. ap/ (the server's worlds and host.yaml) is rebuilt at
 every start."""
 APWORLDS = "apworlds"
+YAMLS = "yamls"
+_UNSAFE = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]')
 
 
 class ArchiveError(Exception):
@@ -109,13 +112,17 @@ async def archive(session: Session, settings: Settings, keep: frozenset[int] = f
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
     try:
+        yaml_files = yaml_names(session, game)
         for part in GAME_PARTS:
-            _copy_files(settings.game_dir / part, tmp / part)
+            if part == YAMLS:
+                _copy_yamls(settings.game_dir / YAMLS, tmp / YAMLS, yaml_files)
+            else:
+                _copy_files(settings.game_dir / part, tmp / part)
         for lock in locks(session, game.id):
             if lock.apworld is not None:
                 source = library_path(settings, lock.apworld)
                 _copy_files(source, tmp / APWORLDS / f"{lock.apworld.module}.apworld")
-        meta = _meta(session, settings, game, archived_from)
+        meta = _meta(session, settings, game, archived_from) | {"yaml_files": yaml_files}
         (tmp / META_FILE).write_text(json.dumps(meta, indent=1), encoding="utf-8")
         size = _size(tmp)
         shutil.rmtree(final, ignore_errors=True)  # left by an interrupted restore
@@ -189,7 +196,10 @@ async def restore(
     _clear_game_dir(settings)
     try:
         for part in GAME_PARTS:
-            _copy_files(source / part, settings.game_dir / part)
+            if part == YAMLS:
+                _restore_yamls(source / YAMLS, settings.game_dir / YAMLS, _yaml_files(source))
+            else:
+                _copy_files(source / part, settings.game_dir / part)
         _restore_library(session, settings, restoring, source)
         session.delete(now)  # the empty game it replaces
         session.flush()
@@ -343,6 +353,61 @@ def _meta(
         }
     )
     return meta
+
+
+def yaml_names(session: Session, game: Game) -> dict[str, int]:
+    """The archive's name for each accepted YAML, by upload ID (#105): its slots' names,
+    `Alice.yaml` or `Alice+Bob.yaml`, so the archive means something to someone browsing
+    it. Characters a file name can't hold become `_`; a clash gets `-2`, `-3`."""
+    names: dict[str, int] = {}
+    taken: set[str] = set()
+    uploads = session.scalars(
+        select(Upload)
+        .where(Upload.game_id == game.id, Upload.status == "accepted")
+        .order_by(Upload.id)
+    )
+    for upload in uploads:
+        slots = sorted(upload.slots, key=lambda slot: slot.document)
+        stem = "+".join(slot.name for slot in slots) or f"upload-{upload.id}"
+        stem = _UNSAFE.sub("_", stem).strip().lstrip(".")[:100] or f"upload-{upload.id}"
+        name, n = f"{stem}.yaml", 1
+        while name.casefold() in taken:
+            n += 1
+            name = f"{stem}-{n}.yaml"
+        taken.add(name.casefold())
+        names[name] = upload.id
+    return names
+
+
+def _copy_yamls(source: Path, dest: Path, names: dict[str, int]) -> None:
+    """The game's `<upload id>.yaml` files, under their archive names. Anything else in the
+    folder keeps its own name."""
+    by_file = {f"{upload_id}.yaml": name for name, upload_id in names.items()}
+    if not source.is_dir() or source.is_symlink():
+        return
+    for entry in sorted(os.scandir(source), key=lambda e: e.name):
+        _copy_files(Path(entry.path), dest / by_file.get(entry.name, entry.name))
+
+
+def _yaml_files(source: Path) -> dict[str, int]:
+    """archive.json's map of YAML file to upload ID; archives from Alpha 1 have none."""
+    try:
+        meta = json.loads((source / META_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    files = meta.get("yaml_files") if isinstance(meta, dict) else None
+    if not isinstance(files, dict):
+        return {}
+    return {k: v for k, v in files.items() if isinstance(k, str) and type(v) is int}
+
+
+def _restore_yamls(source: Path, dest: Path, names: dict[str, int]) -> None:
+    """Back to `<upload id>.yaml`, which the game folder uses."""
+    if not source.is_dir() or source.is_symlink():
+        return
+    for entry in sorted(os.scandir(source), key=lambda e: e.name):
+        upload_id = names.get(entry.name)
+        _copy_files(Path(entry.path), dest / (f"{upload_id}.yaml" if upload_id else entry.name))
 
 
 def _restore_library(session: Session, settings: Settings, game: Game, source: Path) -> None:
