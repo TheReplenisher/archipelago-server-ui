@@ -89,6 +89,9 @@ def test_the_defaults_and_every_field(client: TestClient, settings: Settings) ->
         {"hint_cost": 101},
         {"release_mode": "sometimes"},
         {"password": "two\nlines"},
+        {"password": "None"},  # /option would clear the password (#96)
+        {"server_password": "NULL"},
+        {"password": "''"},
         {"plando_options": ["bosses", "everything"]},
         {"unknown": 1},
     ],

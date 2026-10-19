@@ -23,7 +23,14 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationError,
+)
 from sqlalchemy.orm import Session
 
 from apsui.config import Settings
@@ -33,7 +40,21 @@ log = logging.getLogger(__name__)
 
 KEY = "host"
 
-Password = Annotated[str, StringConstraints(max_length=64, pattern=r"^[^\x00-\x1f\x7f]*$")]
+NO_PASSWORD = frozenset({"none", "null", '""', "''"})
+"""Values MultiServer's /option reads as "no password", in any case (#96)."""
+
+
+def _not_a_no_password_word(value: str) -> str:
+    if value.casefold() in NO_PASSWORD:
+        raise ValueError(f"Archipelago reads {value!r} as no password; leave it empty instead")
+    return value
+
+
+Password = Annotated[
+    str,
+    StringConstraints(max_length=64, pattern=r"^[^\x00-\x1f\x7f]*$"),
+    AfterValidator(_not_a_no_password_word),
+]
 ReleaseMode = Literal["auto", "enabled", "disabled", "goal", "auto-enabled"]
 PlandoOption = Literal["bosses", "items", "texts", "connections"]
 

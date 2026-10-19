@@ -572,7 +572,8 @@ Decided while building it (#23):
   - `meta.yaml` goes with generation presets
 - Decided while building it (#25):
   - **Stored in app.db,** validated (each choice from AP's own list, numbers in range,
-    passwords a single line), with AP's defaults except `disable_item_cheat`. The upload
+    passwords a single line, and never `none`, `null`, `""` or `''`, which `/option`
+    reads as *no password*, #96), with AP's defaults except `disable_item_cheat`. The upload
     rules from §4 join them: the **slot limit** and **apworld approval**, whose install
     environment variables (`APSUI_MAX_SLOTS`, `APSUI_APWORLD_APPROVAL`) are now only the
     defaults.
