@@ -118,7 +118,13 @@ class FakeAP:
             }  # fmt: skip
             hint = {"cmd": "PrintJSON", "type": "Hint", "data": [{"text": "[Hint]: secret"}]}
             tutorial = {"cmd": "PrintJSON", "type": "Tutorial", "data": [{"text": "!help"}]}
-            await ws.send(json.dumps([send, hint, tutorial]))
+            # Untyped: the console's /send goes to everyone; the warning only to this client.
+            notice = {"cmd": "PrintJSON", "data": [{"text": 'Cheat console: sending "Key"'}]}
+            warning = {
+                "cmd": "PrintJSON",
+                "data": [{"text": "Warning: your client does not support compressed websockets"}],
+            }
+            await ws.send(json.dumps([send, hint, tutorial, notice, warning]))
 
 
 @contextlib.contextmanager
@@ -320,10 +326,14 @@ def test_the_player_feed_shows_what_everyone_sees_and_no_hints(client: TestClien
     body: dict[str, Any] = {"entries": []}
     for _ in range(100):
         body = client.get("/api/slot/feed").json()
-        if body["entries"]:
+        if len(body["entries"]) >= 2:
             break
         time.sleep(0.02)
-    [entry] = body["entries"]
+    entry, notice = body["entries"]
+    assert (notice["type"], notice["parts"][0]["text"]) == (
+        "Notice",
+        'Cheat console: sending "Key"',
+    )
     assert entry["type"] == "ItemSend"
     assert [(p["kind"], p["text"]) for p in entry["parts"]] == [
         ("player", "Hornet"),

@@ -395,16 +395,16 @@ curl -fsS -b "$jar" "$base/slot/feed" >/dev/null  # opens the observer
 curl -fsS -H 'Content-Type: application/json' -d '{"text": "/send Alice \"Confetti Cannon\""}' \
     "$base/server/command" >/dev/null
 for _ in $(seq $((20 * scale))); do
-    curl -fsS -b "$jar" "$base/slot/feed" | grep -q '"type":"ItemCheat"' && break
+    curl -fsS -b "$jar" "$base/slot/feed" | grep -q 'Cheat console: sending' && break
     sleep 1
 done
 curl -fsS -b "$jar" "$base/slot/feed" | python3 -c '
 import json, sys
 f = json.load(sys.stdin)
-cheat = [e for e in f["entries"] if e["type"] == "ItemCheat"]
-assert cheat, f
-parts = {(p["kind"], p["text"]) for p in cheat[-1]["parts"]}
-assert ("item", "Confetti Cannon") in parts and ("player", "Alice") in parts, cheat[-1]
+# The console /send is an untyped notice to everyone in AP 0.6.8.
+cheat = [e for e in f["entries"] if "Cheat console: sending" in e["parts"][0]["text"]]
+assert cheat and cheat[-1]["type"] == "Notice", f
+assert "Confetti Cannon" in cheat[-1]["parts"][0]["text"], cheat[-1]
 assert not any(e["type"] in ("Hint", "Tutorial", "CommandResult") for e in f["entries"]), f
 print("player feed:", len(f["entries"]), "entries")' || { echo "player feed wrong"; exit 1; }
 curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }

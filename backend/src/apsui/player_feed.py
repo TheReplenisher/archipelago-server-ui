@@ -5,8 +5,11 @@ It never comes from the admin's feed (MultiServer's own output holds the room pa
 One observer connection, as the first slot with the `Tracker` tag, collects MultiServer's
 PrintJSON messages. Only the kinds every player already sees in their own client are
 kept: item sends, `/send` cheats, chat, server chat, joins and parts, goals, releases,
-collects and countdowns. Hints and anything addressed to the observer's own slot
-(tutorials, command results) are dropped, so one slot's hints never reach the others.
+collects and countdowns, and the untyped notices MultiServer sends everyone (its
+console's `/send` is one: "Cheat console: sending …"). Hints and anything addressed to the
+observer's own slot (tutorials, command results, and the one untyped message AP 0.6.8
+sends a single client, a compression warning) are dropped, so one slot's hints never
+reach the others.
 
 Each entry is rendered as parts (text, player, item, location), with an item's flags so
 the page can mark progression, useful and trap items. The last 500 are kept, and a new
@@ -37,8 +40,11 @@ SHOWN = frozenset(
         "Release",
         "Collect",
         "Countdown",
+        "Notice",
     }
 )
+PRIVATE_NOTICES = ("Warning: your client does not support compressed",)
+"""Untyped messages AP sends only to the connecting client."""
 
 
 def _int(value: object) -> int | None:
@@ -48,10 +54,15 @@ def _int(value: object) -> int | None:
 def render(tracker: Tracker, message: dict[str, Any]) -> dict[str, Any] | None:
     """A PrintJSON message as a feed entry, or None if it isn't for everyone."""
     kind = message.get("type")
-    if kind not in SHOWN:
-        return None
     data = message.get("data")
     if not isinstance(data, list):
+        return None
+    if kind is None:  # broadcast_text_all without a type: a notice for everyone
+        first = data[0].get("text") if data and isinstance(data[0], dict) else None
+        if not isinstance(first, str) or first.startswith(PRIVATE_NOTICES):
+            return None
+        kind = "Notice"
+    if kind not in SHOWN:
         return None
     parts: list[dict[str, Any]] = []
     for raw in data[:MAX_PARTS]:
