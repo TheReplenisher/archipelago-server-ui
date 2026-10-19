@@ -113,6 +113,12 @@ Recorded so they aren't lost, not committed to a release.
   per install".
 - **AP version chosen by the admin.** *Unconfirmed:* only if it proves practical.
 
+### Look and feel
+
+- **WebHost style (#110).** Restyle the UI to match Archipelago's own website
+  (`WebHost.py`): its fonts, illustrated headers and backgrounds, and palette, done as a
+  Mantine theme. Possibly serving the art straight from the installed AP version.
+
 ### Deployment
 
 - **Single-container mode** for platforms that only run one container, with reduced
