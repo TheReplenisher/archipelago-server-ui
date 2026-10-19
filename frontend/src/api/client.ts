@@ -21,10 +21,38 @@ export async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
   })
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null)
-    throw new ApiError(response.status, errorMessage(response, body), errorDetail(body))
+    const error = new ApiError(response.status, errorMessage(response, body), errorDetail(body))
+    if (error.code === ADMIN_LOGIN_REQUIRED) window.dispatchEvent(new Event(ADMIN_LOGGED_OUT))
+    throw error
   }
   return (await response.json()) as T
 }
+
+/** The API's answer on an admin route without a logged-in admin (#32). */
+export const ADMIN_LOGIN_REQUIRED = 'admin-login-required'
+/** Fired on window when an admin route says the admin isn't logged in (any more). */
+export const ADMIN_LOGGED_OUT = 'apsui:admin-logged-out'
+
+export interface AdminSession {
+  /** False until the first admin sets a password. */
+  password_set: boolean
+  logged_in: boolean
+  username: string | null
+}
+
+export const getAdminSession = (signal?: AbortSignal) =>
+  getJson<AdminSession>('/admin/session', { signal })
+
+export const adminSetup = (password: string) =>
+  postJsonBody<AdminSession>('/admin/setup', { password })
+
+export const adminLogin = (password: string) =>
+  postJsonBody<AdminSession>('/admin/login', { password })
+
+export const adminLogout = () => postJson<AdminSession>('/admin/logout')
+
+export const changeAdminPassword = (current: string, next: string) =>
+  postJsonBody<AdminSession>('/admin/password', { current, new: next })
 
 export const postJson = <T>(path: string, body?: BodyInit) =>
   getJson<T>(path, { method: 'POST', body })

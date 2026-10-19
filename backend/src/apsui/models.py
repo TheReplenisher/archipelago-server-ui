@@ -192,7 +192,18 @@ class Generation(Base):
     """The uploads AP's error points at: [{"upload_id", "filename", "slots"}]."""
 
 
-__all__ = ["Apworld", "Base", "Game", "Generation", "Job", "Slot", "Upload", "WorldLock"]
+__all__ = [
+    "Admin",
+    "AdminSession",
+    "Apworld",
+    "Base",
+    "Game",
+    "Generation",
+    "Job",
+    "Slot",
+    "Upload",
+    "WorldLock",
+]
 
 
 class Setting(Base):
@@ -203,3 +214,29 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict[str, Any]] = mapped_column(JSON)
+
+
+class Admin(Base):
+    """An admin account (DESIGN.md §7, #32). Alpha 2 has one, `admin`, whose password is
+    set by whoever opens the admin pages first, or from a shell with `apsui-admin`."""
+
+    __tablename__ = "admins"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    """scrypt, with its parameters and salt: see apsui.admin_auth."""
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    password_changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AdminSession(Base):
+    """A logged-in admin browser. Only a hash of the cookie's token is stored."""
+
+    __tablename__ = "admin_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    admin_id: Mapped[int] = mapped_column(ForeignKey("admins.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

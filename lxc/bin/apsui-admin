@@ -1,0 +1,7 @@
+#!/bin/sh
+# Admin tasks from a shell (apsui-admin --help), e.g. apsui-admin set-password.
+# Installed by lxc/install.sh. Runs as the web service's user, on its data.
+set -e
+[ "$(id -u)" = 0 ] || { echo "apsui-admin: run it as root" >&2; exit 1; }
+exec runuser -u apsui-web -- env APSUI_DATA_DIR=/var/lib/apsui/data \
+    /opt/apsui/venv/bin/apsui-admin "$@"

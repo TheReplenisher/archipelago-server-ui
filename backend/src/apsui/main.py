@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from apsui import __version__, migrate
+from apsui.admin_auth import LoginLimiter
 from apsui.api import router as api_router
 from apsui.apworlds import finish_apworld
 from apsui.config import Settings, get_settings
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(title="Archipelago Server UI", version=__version__, lifespan=lifespan)
     app.state.settings = settings
+    app.state.admin_logins = LoginLimiter()
     app.add_middleware(SameOriginGuard, allowed_hosts=settings.allowed_hosts)
     app.include_router(api_router)
 

@@ -706,12 +706,30 @@ Decided while building it (#30):
 
 ## 7. Admin side
 
-- **Alpha 1: there is no admin login.** The admin tab is open to anyone who can reach
-  the UI. This is an accepted early-alpha risk; the README warns against exposing an
-  Alpha 1 install to the internet. Websites the admin visits can't use it through the
-  admin's browser (§8, requests from other websites).
-- **Alpha 2:** one default admin account. A password is set on first login and can be
-  changed later.
+- **Alpha 1 had no admin login:** the admin tab was open to anyone who could reach the UI.
+- **Alpha 2:** one default admin account, `admin`. Decided while building it (#32):
+  - **First login:** whoever opens Admin first sets the password, no setup code (conne's
+    decision, 2026-10-18). The setup screen says so, and how to take it back. Until it is
+    set, the admin pages show nothing but that screen.
+  - **Override from a shell:** `apsui-admin set-password` (`docker compose exec web …`, or
+    as root in the LXC, where a wrapper runs it as `apsui-web`) sets a new password and
+    ends every session: the way back in after a forgotten password, or from someone who
+    claimed the install first. Shell access to the host already means access to app.db.
+  - **Everything but the player pages needs it:** every API route except `/api/health`,
+    `/api/slot/*` and `/api/admin/{session,setup,login,logout}` goes through
+    `require_admin`; the server feed's WebSocket is closed with 1008 without it. Admin,
+    Settings and Health show the setup or the login until the admin is logged in, and go
+    back to the login when a request finds the session gone.
+  - **Passwords** are hashed with the standard library's scrypt (n=2^16, r=8, p=1, about
+    64 MB and 0.2 s), salted, compared in constant time; 8 to 1024 characters.
+  - **Sessions** are a random token in the `apsui_admin` cookie (`HttpOnly`,
+    `SameSite=Strict`, path `/api`, `Secure` behind HTTPS); app.db keeps only its SHA-256,
+    so a restart doesn't log the admin out. A session ends after 7 days unused or 30 days
+    in all, at logout, or when the password changes (every other session from the admin
+    pages; all of them from the shell).
+  - **Logins** are limited to 10 a minute per client address and 30 a minute in all.
+  - The health page is behind the login too, so the warning about an unset password is
+    the setup screen itself, the README and the LXC install's closing message.
 - **Beta:** the default admin can add more admins, each with a role that limits what
   they can do.
 - **Audit log (Alpha 2):** every admin action, with who did it and when.
@@ -769,10 +787,10 @@ Rejected:
 
 - **A required custom header** (to force a CORS preflight): it adds nothing to the above
   in current browsers, doesn't help against rebinding, and breaks curl and scripts.
-- **CSRF tokens:** there are no sessions to bind them to before admin login (#32).
+- **CSRF tokens:** before admin login there were no sessions to bind them to.
 
-Admin login keeps the guard. Its cookies should be `SameSite=Strict`, and the guard still
-covers the login form and the player pages.
+Admin login (#32) keeps the guard: its cookie is `SameSite=Strict`, and the guard still
+covers the login form and the player pages. That pair stands in for CSRF tokens.
 
 ## 9. Installation targets
 

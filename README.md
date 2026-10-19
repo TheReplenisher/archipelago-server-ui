@@ -16,9 +16,9 @@ items and hints, and finished games are archived.
 **Unofficial.** This project is not affiliated with or endorsed by the Archipelago project.
 
 > [!WARNING]
-> **Alpha 1 has no admin login.** Anyone who can reach the web UI can run the admin
-> tab. Keep it on your LAN or a VPN, and don't expose it to the internet, even behind a
-> reverse proxy. Read [SECURITY.md](SECURITY.md) first.
+> **Set the admin password as soon as it's installed.** Until it is set, whoever opens the
+> **Admin** tab first sets it and becomes the admin. This is still alpha software: keep it
+> on your LAN or a VPN unless you've read [SECURITY.md](SECURITY.md).
 
 ## Install with Docker Compose
 
@@ -51,6 +51,7 @@ Put any of these in a `.env` file next to `compose.yaml`, then `docker compose u
 | `APSUI_SERVER_MEMORY` | `1g` | Memory limit of the server |
 | `APSUI_WORKER_CPUS` | `2` | CPU limit of the worker |
 | `APSUI_ALLOWED_HOSTS` | *(none)* | Names you reach the web UI by, comma-separated (below) |
+| `APSUI_FORWARDED_ALLOW_IPS` | `127.0.0.1` | Your HTTPS reverse proxy's address, so the admin's login cookie is marked HTTPS-only |
 
 A port can name the host address to listen on, e.g. `APSUI_WEB_PORT=127.0.0.1:8000`
 to reach the web UI only from the same machine.
@@ -95,7 +96,20 @@ Logs: `journalctl -u apsui-web -u apsui-worker -u apsui-server`.
 
 ## First run
 
-Everything is on the **Admin** tab.
+**Open the Admin tab first and set the admin password** (at least 8 characters). Admin,
+Settings and Health all need it from then on; **Log out** and **Change password** are at
+the top of those pages. A login lasts a week unused (a month at most), and changing the
+password logs out every other browser.
+
+Forgotten the password, or someone set it before you did? Set a new one from a shell on
+the host, which also logs every admin out:
+
+```sh
+docker compose exec web apsui-admin set-password   # Docker Compose
+apsui-admin set-password                           # LXC, as root
+```
+
+Everything else is on the **Admin** tab.
 
 1. **Custom games:** upload their `.apworld` files under **Apworlds**. Each is inspected
    and test-imported in the worker, then waits for your approval. Only approve worlds
@@ -157,8 +171,8 @@ internet games is planned (#10).
 The web service speaks plain HTTP on `APSUI_WEB_PORT`. A reverse proxy in front of it
 adds HTTPS. Turn on WebSocket support where the proxy asks: the server feed uses it. The
 proxy must pass the `Host` header through, as these three do by default, because the feed
-only accepts its own page. (Remember the warning above: in Alpha 1 this is for HTTPS on
-your own network, not for exposing the admin tab.)
+only accepts its own page. Behind HTTPS the admin's login cookie is only ever sent over
+HTTPS; set `APSUI_FORWARDED_ALLOW_IPS` to the proxy's address so the web service knows.
 
 **Caddy** (`Caddyfile`):
 
@@ -234,8 +248,10 @@ Or delete the container.
 ## Security
 
 Uploaded `.apworld` files are Python code. Read [SECURITY.md](SECURITY.md) before
-exposing an install to the internet. **Alpha 1 has no admin login; do not expose it
-publicly.**
+exposing an install to the internet.
+
+The admin pages need the admin password (above). It is stored as a salted scrypt hash, and
+logins are limited to 10 a minute per address. The player pages need no admin login.
 
 The web service refuses requests that pages on other websites send through your browser,
 names it doesn't know, and being shown in a frame, so a site you visit can't use the

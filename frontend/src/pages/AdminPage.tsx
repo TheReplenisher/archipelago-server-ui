@@ -1,5 +1,4 @@
-import { Alert, Stack, Title } from '@mantine/core'
-import { IconAlertTriangle } from '@tabler/icons-react'
+import { Stack, Title } from '@mantine/core'
 import { useState } from 'react'
 import { Apworlds } from '../components/Apworlds'
 import { Archives } from '../components/Archives'
@@ -16,10 +15,6 @@ export function AdminPage() {
   return (
     <Stack maw={960} key={version}>
       <Title order={2}>Admin</Title>
-      <Alert color="yellow" icon={<IconAlertTriangle />} title="No admin login in Alpha 1">
-        Anyone who can reach this page can manage the server. Do not expose an Alpha 1 install to
-        the internet.
-      </Alert>
       <CurrentGame onChanged={changed} />
       <ServerFeed />
       <Uploads />

@@ -1,4 +1,5 @@
 import { Navigate, type RouteObject } from 'react-router'
+import { AdminGate } from './components/AdminGate'
 import { AppLayout } from './components/AppLayout'
 import { AdminPage } from './pages/AdminPage'
 import { HealthPage } from './pages/HealthPage'
@@ -12,9 +13,31 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <Navigate to="/player" replace /> },
       { path: 'player/*', element: <PlayerPage /> },
-      { path: 'admin/*', element: <AdminPage /> },
-      { path: 'settings/*', element: <SettingsPage /> },
-      { path: 'health/*', element: <HealthPage /> },
+      // The admin's pages: behind the admin login (#32).
+      {
+        path: 'admin/*',
+        element: (
+          <AdminGate>
+            <AdminPage />
+          </AdminGate>
+        ),
+      },
+      {
+        path: 'settings/*',
+        element: (
+          <AdminGate>
+            <SettingsPage />
+          </AdminGate>
+        ),
+      },
+      {
+        path: 'health/*',
+        element: (
+          <AdminGate>
+            <HealthPage />
+          </AdminGate>
+        ),
+      },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

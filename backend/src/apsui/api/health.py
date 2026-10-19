@@ -16,6 +16,8 @@ from apsui.same_origin import LOCAL_SUFFIXES
 from apsui.server_control import request as control_request
 
 router = APIRouter(tags=["health"])
+details_router = APIRouter(tags=["health"])
+"""The health page's details: the admin's (#32)."""
 
 SessionDep = Annotated[Session, Depends(get_session)]
 
@@ -110,7 +112,7 @@ ANY_HOST_WARNING = (
 )
 
 
-@router.get("/health/details")
+@details_router.get("/health/details")
 async def health_details(request: Request, session: SessionDep) -> HealthDetails:
     """The health page (admin): each service, published ports, disk use, the Archipelago
     version, the isolation mode and the host names the UI answers to."""

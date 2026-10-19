@@ -31,6 +31,7 @@ cleanup() {
     if [ "$status" -ne 0 ]; then compose logs --no-color --tail 50 || true; fi
     compose down -v --timeout 5 >/dev/null 2>&1 || true
     [ -z "${slow:-}" ] || rm -f "$slow"
+    [ -z "${CURL_HOME:-}" ] || rm -rf "$CURL_HOME"
     exit "$status"
 }
 trap cleanup EXIT
@@ -40,6 +41,19 @@ compose up -d --wait --wait-timeout $((120 * scale))
 
 echo "--- web answers on the published port"
 curl -fsS "http://127.0.0.1:$APSUI_WEB_PORT/api/health" | grep -q '"status":"ok"'
+
+echo "--- admin login (#32): the admin API is closed until the admin logs in"
+[ "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:$APSUI_WEB_PORT/api/game")" = 401 ] \
+    || { echo "the admin API answered without a login"; exit 1; }
+echo 'compose test password' | compose exec -T web apsui-admin set-password --password-stdin
+# Every curl from here on sends (and keeps) the admin's session cookie.
+CURL_HOME=$(mktemp -d)
+export CURL_HOME
+printf 'cookie = "%s/jar"\ncookie-jar = "%s/jar"\n' "$CURL_HOME" "$CURL_HOME" > "$CURL_HOME/.curlrc"
+curl -fsS -H 'Content-Type: application/json' -d '{"password":"compose test password"}' \
+    "http://127.0.0.1:$APSUI_WEB_PORT/api/admin/login" | grep -q '"logged_in":true' \
+    || { echo "admin login failed"; exit 1; }
+admin_token=$(awk '$6 == "apsui_admin" {print $7}' "$CURL_HOME/jar")
 
 echo "--- web reaches the server supervisor over the control socket"
 curl -fsS "http://127.0.0.1:$APSUI_WEB_PORT/api/server" | grep -q '"reachable":true'
@@ -308,12 +322,17 @@ py server <<'PY' || { echo "the live setting never reached MultiServer"; exit 1;
 assert "Set option hint_cost to 30" in open("/data/game/logs/server.log").read()
 PY
 echo "settings: ok (host.yaml at start, /option live)"
-py web <<'PY' || { echo "server feed incomplete"; exit 1; }
-import asyncio, json
+py web "$admin_token" <<'PY' || { echo "server feed incomplete"; exit 1; }
+import asyncio, json, sys
 import websockets
 
 async def scrollback():
-    async with websockets.connect("ws://127.0.0.1:8000/api/server/feed") as ws:
+    url, cookie = "ws://127.0.0.1:8000/api/server/feed", {"Cookie": f"apsui_admin={sys.argv[1]}"}
+    try:
+        connection = websockets.connect(url, additional_headers=cookie)
+    except TypeError:  # websockets before 14
+        connection = websockets.connect(url, extra_headers=cookie)
+    async with connection as ws:
         return json.loads(await ws.recv())["lines"]
 
 lines = asyncio.run(scrollback())

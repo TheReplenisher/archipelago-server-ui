@@ -68,12 +68,6 @@ describe('app shell', () => {
 })
 
 describe('admin page', () => {
-  it('warns that Alpha 1 has no admin login', () => {
-    stubHealth(okHealth)
-    renderRoute('/admin')
-    expect(screen.getByText('No admin login in Alpha 1')).toBeInTheDocument()
-  })
-
   it('shows the backend version when the API is up', async () => {
     const fetchMock = stubHealth(okHealth)
     renderRoute('/admin')
@@ -85,6 +79,107 @@ describe('admin page', () => {
     stubHealth(() => Promise.reject(new TypeError('Failed to fetch')))
     renderRoute('/admin')
     await waitFor(() => expect(screen.getByText('Unreachable')).toBeInTheDocument())
+  })
+})
+
+describe('admin login', () => {
+  /** /api/admin/* as the backend answers, starting from `password_set`. */
+  function stubAdmin(passwordSet: boolean) {
+    let session = { password_set: passwordSet, logged_in: false, username: null as string | null }
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/api/admin/session') return Promise.resolve(Response.json(session))
+      if (url === '/api/admin/setup' || url === '/api/admin/login') {
+        const { password } = JSON.parse(String(init?.body)) as { password: string }
+        if (url.endsWith('login') && password !== 'the password')
+          return Promise.resolve(
+            Response.json(
+              { detail: { code: 'login-refused', message: 'Wrong password' } },
+              { status: 401 },
+            ),
+          )
+        session = { password_set: true, logged_in: true, username: 'admin' }
+        return Promise.resolve(Response.json(session))
+      }
+      if (url === '/api/admin/logout') {
+        session = { ...session, logged_in: false, username: null }
+        return Promise.resolve(Response.json(session))
+      }
+      if (url === '/api/game' && !session.logged_in)
+        return Promise.resolve(
+          Response.json(
+            { detail: { code: 'admin-login-required', message: 'Log in as the admin' } },
+            { status: 401 },
+          ),
+        )
+      if (url === '/api/game') return Promise.resolve(Response.json(openGame))
+      if (url.startsWith('/api/') && url !== '/api/health' && url !== '/api/archives')
+        return Promise.resolve(Response.json([]))
+      return fallback(input)
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it('asks whoever comes first to set the password', async () => {
+    const fetchMock = stubAdmin(false)
+    renderRoute('/admin', { realAdminSession: true })
+    expect(await screen.findByRole('heading', { name: 'Set the admin password' })).toBeVisible()
+    expect(screen.getByText('apsui-admin set-password')).toBeInTheDocument()
+    await userEvent.type(screen.getByLabelText(/New password/), 'the password')
+    await userEvent.type(screen.getByLabelText(/Again/), 'the password')
+    await userEvent.click(screen.getByRole('button', { name: 'Set password' }))
+    expect(await screen.findByRole('heading', { name: 'Admin' })).toBeInTheDocument()
+    expect(screen.getByText('Logged in as admin')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/admin/setup',
+      expect.objectContaining({ body: JSON.stringify({ password: 'the password' }) }),
+    )
+  })
+
+  it('logs in, shows a wrong password, and logs out', async () => {
+    stubAdmin(true)
+    renderRoute('/admin', { realAdminSession: true })
+    const field = await screen.findByLabelText(/Admin password/)
+    await userEvent.type(field, 'nope')
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
+    expect(await screen.findByText('Wrong password')).toBeInTheDocument()
+    await userEvent.clear(field)
+    await userEvent.type(field, 'the password')
+    await userEvent.click(screen.getByRole('button', { name: 'Log in' }))
+    expect(await screen.findByText('Logged in as admin')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Log out' }))
+    expect(await screen.findByRole('heading', { name: 'Admin login' })).toBeInTheDocument()
+  })
+
+  it('goes back to the login when a request finds the session gone', async () => {
+    // Logged in when the page opened; the session has since ended (expired, or the
+    // password was changed elsewhere), so the next admin request is refused.
+    let sessionChecks = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url === '/api/admin/session')
+          return Promise.resolve(
+            Response.json({
+              password_set: true,
+              logged_in: sessionChecks++ === 0,
+              username: 'admin',
+            }),
+          )
+        if (url === '/api/health') return okHealth()
+        return Promise.resolve(
+          Response.json(
+            { detail: { code: 'admin-login-required', message: 'Log in as the admin' } },
+            { status: 401 },
+          ),
+        )
+      }),
+    )
+    renderRoute('/admin', { realAdminSession: true })
+    expect(await screen.findByRole('heading', { name: 'Admin login' })).toBeInTheDocument()
+    expect(sessionChecks).toBeGreaterThan(1)
   })
 })
 
