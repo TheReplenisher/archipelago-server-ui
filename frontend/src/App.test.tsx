@@ -830,6 +830,7 @@ describe('settings page', () => {
         warning: 'Very large logs.',
       }),
     ],
+    reset: [],
   }
 
   it('saves the settings and says which applied at once', async () => {
@@ -867,6 +868,19 @@ describe('settings page', () => {
       plando_options: ['bosses', 'items'],
       log_network: true,
     })
+  })
+
+  it('says which stored settings were reset after an update', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input) === '/api/settings')
+          return Promise.resolve(Response.json({ ...page, reset: ['hint_cost'] }))
+        return fallback(input)
+      }),
+    )
+    renderRoute('/settings')
+    expect(await screen.findByText(/back at their defaults: Hint cost\./)).toBeInTheDocument()
   })
 
   it('shows a validation error from the server', async () => {

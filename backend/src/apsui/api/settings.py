@@ -16,6 +16,9 @@ class SettingsOut(BaseModel):
     fields: list[dict[str, Any]]
     """Label, help, group, input kind, choices and limits of each setting, and when it
     applies: live (at once on a running server), start, generation or upload."""
+    reset: list[str]
+    """Stored settings that no longer validate (after an update, say) and are shown at
+    their defaults until the next save."""
 
 
 class Saved(BaseModel):
@@ -27,8 +30,8 @@ class Saved(BaseModel):
 
 @router.get("")
 def get_settings(request: Request, session: SessionDep) -> SettingsOut:
-    values = host_settings.load(session, request.app.state.settings)
-    return SettingsOut(values=values, fields=host_settings.fields())
+    values, reset = host_settings.load_checked(session, request.app.state.settings)
+    return SettingsOut(values=values, fields=host_settings.fields(), reset=reset)
 
 
 @router.put("")

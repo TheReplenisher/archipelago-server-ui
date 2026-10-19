@@ -179,15 +179,31 @@ def defaults(settings: Settings) -> HostSettings:
 
 
 def load(session: Session, settings: Settings) -> HostSettings:
+    return load_checked(session, settings)[0]
+
+
+def load_checked(session: Session, settings: Settings) -> tuple[HostSettings, list[str]]:
+    """The stored settings, each checked on its own (#95): a value that no longer
+    validates (an update dropped a choice, narrowed a range or renamed the key) falls back
+    to its default, and only that one. Returns the keys that fell back, so the settings
+    page can say so; they stay that way until the admin saves."""
     stored = session.get(Setting, KEY)
     base = defaults(settings).model_dump()
-    if stored is None:
-        return HostSettings.model_validate(base)
-    try:
-        return HostSettings.model_validate(base | dict(stored.value))
-    except (TypeError, ValidationError) as exc:  # from an older version, say
-        log.warning("Stored settings don't fit; using the defaults: %s", str(exc)[:300])
-        return HostSettings.model_validate(base)
+    values = dict(stored.value) if stored is not None else {}
+    kept, reset = dict(base), []
+    for key, value in values.items():
+        if key not in HostSettings.model_fields:
+            reset.append(key)
+            continue
+        try:
+            HostSettings.model_validate(base | {key: value})
+        except ValidationError:
+            reset.append(key)
+            continue
+        kept[key] = value
+    if reset:
+        log.warning("Stored settings reset to their defaults: %s", ", ".join(reset))
+    return HostSettings.model_validate(kept), reset
 
 
 def save(session: Session, values: HostSettings) -> None:

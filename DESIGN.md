@@ -595,6 +595,10 @@ Decided while building it (#23):
     then resumes it from the save without leaving Running (#97), as it does for a crashed
     server: the web service re-writes host.yaml and the locked worlds and asks the
     supervisor to start again.
+  - **Stored settings are checked one by one when read (#95):** a value that no longer
+    validates after an update (a dropped choice, a narrowed range, a renamed key) falls
+    back to its default, and only that one. The Settings page lists the ones that did,
+    until the admin saves.
   - **`port` is shown by the install, not set here:** under Compose the container's port
     is fixed and the published one is `APSUI_GAME_PORT` (README); LXC (#14) can revisit.
 

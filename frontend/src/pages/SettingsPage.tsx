@@ -178,6 +178,7 @@ export function SettingsPage() {
       const result = await putSettings(values)
       setValues(result.values)
       setSaved(result.applied_now)
+      setPage((p) => (p ? { ...p, reset: [] } : p))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -190,6 +191,12 @@ export function SettingsPage() {
     <Stack maw={960}>
       <Title order={2}>Settings</Title>
       {!page && !error && <Loader size="sm" />}
+      {page && page.reset.length > 0 && (
+        <Alert color="orange" title="Some settings were reset after an update">
+          These stored settings no longer fit this version and are back at their defaults:{' '}
+          {page.reset.map(label).join(', ')}. Check them, then save.
+        </Alert>
+      )}
       {page &&
         groups.map((group) => {
           const fields = page.fields.filter((f) => f.group === group.key)

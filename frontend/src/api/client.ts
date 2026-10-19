@@ -378,6 +378,8 @@ export interface SettingField {
 export interface SettingsPage {
   values: Record<string, SettingValue>
   fields: SettingField[]
+  /** Stored settings that stopped validating after an update, shown at their defaults. */
+  reset: string[]
 }
 
 export const getSettings = (signal?: AbortSignal) => getJson<SettingsPage>('/settings', { signal })
