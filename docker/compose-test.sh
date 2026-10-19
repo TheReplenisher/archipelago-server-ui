@@ -177,6 +177,26 @@ curl -fsS "$base/worlds" | grep -q '"world":"APQuest","label":"APQuest · custom
     || { echo "APQuest not locked to the replacement: $(curl -fsS "$base/worlds")"; exit 1; }
 echo "uploads: ok"
 
+echo "--- player upload (#33): no admin login, real AP checks it, withdrawn with its receipt"
+# curl -q: without the admin's cookie.
+player=$(curl -q -fsS -F "file=@$here/worker/tests/yaml/ok__multi.yaml" "$base/player/yaml")
+upload_id=$(echo "$player" | python3 -c 'import json,sys; print(json.load(sys.stdin)["upload"]["id"])')
+receipt=$(echo "$player" | python3 -c 'import json,sys; print(json.load(sys.stdin)["receipt"])')
+wait_checked
+curl -q -fsS -H 'Content-Type: application/json' \
+    -d "{\"receipts\":[{\"kind\":\"yaml\",\"id\":$upload_id,\"receipt\":\"$receipt\"}]}" \
+    "$base/player/receipts" | python3 -c '
+import json, sys
+[u] = json.load(sys.stdin)
+assert (u["status"], sorted(u["slots"])) == ("accepted", ["First", "Second"]), u
+assert "detail" not in u and "traceback" not in json.dumps(u), u' \
+    || { echo "player upload not accepted"; exit 1; }
+curl -fsS "$base/uploads" | grep -q '"uploaded_by":"player"' || { echo "not marked as a player upload"; exit 1; }
+curl -q -fsS -H 'Content-Type: application/json' -d "{\"receipt\":\"$receipt\"}" \
+    "$base/player/yaml/$upload_id/withdraw" | grep -q '"status":"removed"' \
+    || { echo "withdraw failed"; exit 1; }
+echo "player upload: ok"
+
 echo "--- upload log: the real rejection keeps the worker's full detail"
 bad=$(curl -fsS "$base/uploads" | python3 -c 'import json,sys; print(next(u["id"] for u in json.load(sys.stdin) if u["error_code"] == "option-invalid"))')
 curl -fsS "$base/logs/uploads/yaml/$bad" | python3 -c '
@@ -324,15 +344,16 @@ PY
 echo "settings: ok (host.yaml at start, /option live)"
 py web "$admin_token" <<'PY' || { echo "server feed incomplete"; exit 1; }
 import asyncio, json, sys
-import websockets
+try:  # the new client (websockets 13+)
+    from websockets.asyncio.client import connect
+    headers = "additional_headers"
+except ImportError:
+    from websockets import connect
+    headers = "extra_headers"
 
 async def scrollback():
     url, cookie = "ws://127.0.0.1:8000/api/server/feed", {"Cookie": f"apsui_admin={sys.argv[1]}"}
-    try:
-        connection = websockets.connect(url, additional_headers=cookie)
-    except TypeError:  # websockets before 14
-        connection = websockets.connect(url, extra_headers=cookie)
-    async with connection as ws:
+    async with connect(url, **{headers: cookie}) as ws:
         return json.loads(await ws.recv())["lines"]
 
 lines = asyncio.run(scrollback())
@@ -369,6 +390,23 @@ py server <<'PY' || { echo "the tracker never reached MultiServer"; exit 1; }
 assert "Quester (Team #1) tracking APQuest has joined" in open("/data/game/logs/server.log").read()
 PY
 echo "slot view: ok"
+echo "--- player feed (#35): one observer connection; a real /send reaches it, hints never do"
+curl -fsS -b "$jar" "$base/slot/feed" >/dev/null  # opens the observer
+curl -fsS -H 'Content-Type: application/json' -d '{"text": "/send Alice \"Confetti Cannon\""}' \
+    "$base/server/command" >/dev/null
+for _ in $(seq $((20 * scale))); do
+    curl -fsS -b "$jar" "$base/slot/feed" | grep -q '"type":"ItemCheat"' && break
+    sleep 1
+done
+curl -fsS -b "$jar" "$base/slot/feed" | python3 -c '
+import json, sys
+f = json.load(sys.stdin)
+cheat = [e for e in f["entries"] if e["type"] == "ItemCheat"]
+assert cheat, f
+parts = {(p["kind"], p["text"]) for p in cheat[-1]["parts"]}
+assert ("item", "Confetti Cannon") in parts and ("player", "Alice") in parts, cheat[-1]
+assert not any(e["type"] in ("Hint", "Tutorial", "CommandResult") for e in f["entries"]), f
+print("player feed:", len(f["entries"]), "entries")' || { echo "player feed wrong"; exit 1; }
 curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
 [ "$(curl -sS -o /dev/null -w '%{http_code}' -b "$jar" "$base/slot")" = 503 ] \
     || { echo "slot view while stopped isn't 503"; exit 1; }
@@ -406,6 +444,34 @@ curl -fsS "$base/server" | grep -q '"state":"running"' \
     || { echo "restored game not hosted: $(curl -fsS "$base/server")"; exit 1; }
 curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
 echo "archives: ok"
+
+echo "--- backup and restore (#38): a real backup on the data volume, restored in place"
+curl -fsS -H 'Content-Type: application/json' -d '{"archives": true}' "$base/backups" >/dev/null
+for _ in $(seq $((60 * scale))); do
+    curl -fsS "$base/backups" | grep -q '"making":false' && break
+    sleep 1
+done
+backup=$(curl -fsS "$base/backups" | python3 -c '
+import json, sys
+[b] = [b for b in json.load(sys.stdin)["backups"] if b["readable"]]
+assert b["archives"] and b["files"] > 5, b
+print(b["name"])') || { echo "no backup made"; exit 1; }
+curl -fsS -X POST "$base/game/discard-output" >/dev/null  # a change the restore undoes
+curl -fsS -X POST "$base/backups/$backup/restore" | grep -q "\"restored\":\"$backup\"" \
+    || { echo "restore failed"; exit 1; }
+curl -fsS "$base/game" | grep -q '"state":"generated"' \
+    || { echo "restored game wrong: $(curl -fsS "$base/game")"; exit 1; }
+curl -fsS -X POST "$base/game/start" | grep -q '"state":"running"' \
+    || { echo "the restored game won't start"; exit 1; }
+for _ in $(seq $((30 * scale))); do
+    curl -fsS "$base/server" | grep -q '"state":"running"' && break
+    sleep 1
+done
+curl -fsS "$base/server" | grep -q '"state":"running"' || { echo "restored game not hosted"; exit 1; }
+curl -fsS -X POST "$base/game/stop" | grep -q '"state":"generated"' || { echo "stop failed"; exit 1; }
+curl -fsS "$base/audit" | grep -q '"action":"restore_backup"' \
+    || { echo "restore not in the audit log"; exit 1; }
+echo "backups: ok"
 
 echo "--- health page: every service up, the published ports, compose isolation"
 curl -fsS "$base/health/details" | python3 -c '
