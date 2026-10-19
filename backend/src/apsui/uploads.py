@@ -285,7 +285,9 @@ def suggest(current: str | list[str] | None) -> str:
         return ""
     for template in ("%number%", "%NUMBER%", "%player%", "%PLAYER%"):
         current = current.replace(template, "1")
-    current = current.replace("%", "").strip()
+    for template in ("{number}", "{NUMBER}", "{player}", "{PLAYER}"):
+        current = current.replace(template, "1")
+    current = current.replace("%", "").replace("{", "").replace("}", "").strip()
     return current[:16].strip()
 
 

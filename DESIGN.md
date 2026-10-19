@@ -291,7 +291,9 @@ Steps 3–4 import world code, so they run **in the worker** (the `validate-yaml
   `verify()`. Archipelago's `roll_settings()` then runs 5 times, which also exercises
   triggers, linked options and `requires`.
 - **The name must be one fixed string,** because a slot is logged in to by name (§6).
-  Weighted names and templates (`%number%`, `%player%`) don't qualify.
+  Weighted names and templates (`%number%`, `%player%`, `{player}`, `{number}`) don't
+  qualify: AP fills them in at generation, so the slot would end up named differently from
+  the upload. Any `%`, `{` or `}` in a name is refused (#104).
 - **A slot-name problem doesn't reject the file.** Weighted, template, too long,
   missing, reserved, already taken in this game, or used twice in the file: the upload
   waits as *needs a name*, with the reason and a suggested name for each slot. The admin

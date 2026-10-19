@@ -27,8 +27,8 @@ def check_new_name(name: str) -> str:
         raise InvalidName("A slot name can't be empty")
     if len(name) > MAX_NAME_LENGTH:
         raise InvalidName(f"{name} is longer than 16 characters")
-    if "%" in name:
-        raise InvalidName("Slot names can't contain %")
+    if any(c in name for c in "%{}"):  # Archipelago fills in templates at generation
+        raise InvalidName("Slot names can't contain %, { or }")
     if name == "Archipelago":
         raise InvalidName("A slot can't be named Archipelago")
     return name
